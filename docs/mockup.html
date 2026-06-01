@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Cinema — Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@900&family=Knewave&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:           #0a0908;
+    --surface:      #121110;
+    --elev:         #1a1816;
+    --line:         #2a2724;
+    --line-strong:  #3a3631;
+    --fg:           #f4f1ea;
+    --fg-muted:     #b5afa5;
+    --fg-faint:     #756f65;
+    --fg-ghost:     #443f38;
+    --blood:        #e63a1c;
+    --blood-soft:   rgba(230, 58, 28, 0.14);
+    --blood-faint:  rgba(230, 58, 28, 0.30);
+    --warn:         #fcbb00;
+    --ok:           #6dd47e;
+    --mono:         'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --display:      'Inter', system-ui, sans-serif;
+    --painted:      'Knewave', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font-family: var(--mono); font-size: 13px; line-height: 1.5; min-height: 100%; }
+  body { padding: 28px 32px 80px; max-width: 1480px; margin: 0 auto; }
+  a { color: inherit; text-decoration: none; }
+  button { font-family: inherit; font-size: inherit; color: inherit; background: none; border: none; cursor: pointer; padding: 0; }
+  ::selection { background: var(--blood); color: var(--fg); }
+
+  /* ───────────── STATUS BAR ───────────── */
+  .statusbar { display: flex; justify-content: space-between; align-items: center; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--fg-faint); padding-bottom: 16px; border-bottom: 1px solid var(--line); margin-bottom: 28px; }
+  .statusbar .left, .statusbar .right { display: flex; gap: 22px; align-items: center; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); display: inline-block; vertical-align: middle; margin-right: 8px; }
+  .dot.warn { background: var(--warn); }
+
+  /* ───────────── WORDMARK / HEADER ───────────── */
+  .wordmark { display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px; }
+  .wordmark .painted { font-family: var(--painted); font-size: 38px; color: var(--blood); letter-spacing: 0.005em; line-height: 0.9; transform: rotate(-2deg); transform-origin: left bottom; }
+  .wordmark .lockup  { font-family: var(--display); font-weight: 900; font-size: 18px; letter-spacing: 0.42em; color: var(--fg); text-transform: uppercase; padding-left: 6px; }
+  .tagline { font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--fg-muted); margin-bottom: 32px; }
+
+  /* ───────────── PROJECT HEADER ───────────── */
+  .project-head { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 0 14px; border-bottom: 1px solid var(--line); }
+  .project-meta h1 { font-size: 22px; font-weight: 500; letter-spacing: 0.02em; margin: 0 0 6px; color: var(--fg); }
+  .project-meta h1 .slash { color: var(--blood); margin-right: 2px; }
+  .project-meta .specs { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--fg-muted); }
+  .project-meta .specs span + span::before { content: "/"; margin: 0 12px; color: var(--fg-ghost); }
+  .project-actions { display: flex; gap: 10px; align-items: center; }
+  .btn { font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; padding: 10px 18px; border: 1px solid var(--line-strong); color: var(--fg); transition: all .15s; }
+  .btn:hover { border-color: var(--blood-faint); color: var(--blood); }
+  .btn.primary { background: var(--blood); color: var(--bg); border-color: var(--blood); }
+  .btn.primary:hover { background: #ff4a2c; color: var(--bg); }
+  .btn.ghost { border-color: transparent; color: var(--fg-muted); }
+  .btn.ghost:hover { color: var(--blood); border-color: transparent; }
+
+  /* ───────────── LOOK BAR ───────────── */
+  .lookbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); margin-top: 18px; }
+  .lookbar .slot { background: var(--surface); padding: 14px 18px; display: flex; flex-direction: column; gap: 4px; }
+  .lookbar .label { font-size: 9px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--fg-faint); }
+  .lookbar .value { font-size: 13px; color: var(--fg); display: flex; align-items: center; justify-content: space-between; }
+  .lookbar .value .caret { color: var(--fg-faint); font-size: 10px; }
+
+  /* ───────────── TIMELINE ───────────── */
+  .timeline-wrap { margin-top: 36px; padding: 28px 0 20px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .tl-label { font-size: 10px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--fg-faint); margin-bottom: 18px; display: flex; justify-content: space-between; }
+  .ruler { display: grid; grid-template-columns: repeat(6, 1fr); font-size: 9px; color: var(--fg-faint); letter-spacing: 0.1em; margin-bottom: 8px; padding: 0 0; }
+  .ruler span { border-left: 1px solid var(--line); padding: 0 0 6px 6px; }
+  .ruler span:last-child { border-right: 1px solid var(--line); }
+
+  .clips-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; position: relative; }
+  .clip {
+    position: relative; padding: 16px 14px; min-height: 84px;
+    border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); border-top: 1px solid var(--line);
+    background: var(--surface);
+    cursor: pointer; transition: background .15s, border-color .15s;
+  }
+  .clip:last-child { border-right: 1px solid var(--line); }
+  .clip:hover { background: var(--elev); }
+  .clip.active { background: var(--elev); border-color: var(--blood-faint); border-top-color: var(--blood); border-top-width: 2px; padding-top: 15px; }
+  .clip.empty { background: transparent; }
+  .clip-num { font-size: 9px; letter-spacing: 0.24em; color: var(--fg-faint); margin-bottom: 8px; }
+  .clip.active .clip-num { color: var(--blood); }
+  .clip-title { font-size: 13px; color: var(--fg); margin-bottom: 8px; }
+  .clip.empty .clip-title { color: var(--fg-faint); font-style: italic; }
+  .clip-meta { display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: var(--fg-muted); letter-spacing: 0.06em; }
+  .clip-version { color: var(--blood); }
+  .clip.empty .clip-version { color: var(--fg-faint); }
+  .clip-dur { color: var(--fg-faint); }
+
+  /* transition markers between clips */
+  .trans-marker { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 16px; height: 16px; background: var(--bg); border: 1px solid var(--line-strong); display: grid; place-items: center; font-size: 8px; color: var(--fg-muted); z-index: 2; cursor: pointer; }
+  .trans-marker:hover { border-color: var(--blood); color: var(--blood); }
+  .trans-marker[data-type="fade"] { color: var(--blood-faint); }
+
+  /* AUDIO TRACKS */
+  .audio-row { display: grid; grid-template-columns: repeat(6, 1fr); margin-top: 12px; position: relative; }
+  .audio-row .track-label { position: absolute; left: -68px; top: 50%; transform: translateY(-50%); font-size: 9px; letter-spacing: 0.24em; color: var(--fg-faint); width: 60px; text-align: right; }
+  .vo-seg { background: var(--blood-soft); border: 1px solid var(--blood-faint); padding: 8px 10px; font-size: 10px; color: var(--fg); margin-right: 2px; }
+  .vo-seg .vo-text { color: var(--fg-muted); font-style: italic; }
+  .music-bed { grid-column: 1 / -1; background: linear-gradient(90deg, rgba(230,58,28,0.06), rgba(230,58,28,0.10) 40%, rgba(230,58,28,0.10) 60%, rgba(230,58,28,0.06)); border: 1px solid var(--line); padding: 10px 14px; font-size: 10px; color: var(--fg-muted); display: flex; justify-content: space-between; }
+  .music-bed strong { color: var(--fg); font-weight: 500; }
+
+  .grade-strip { grid-column: 1 / -1; margin-top: 12px; background: linear-gradient(90deg, #2a1a14, #3a1f14 50%, #2a1a14); padding: 8px 14px; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--fg-muted); display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--line); }
+  .grade-strip strong { color: var(--blood); font-weight: 500; letter-spacing: 0.18em; }
+
+  /* ───────────── FLOW PANEL ───────────── */
+  .flow-panel { margin-top: 36px; border: 1px solid var(--line-strong); background: var(--surface); }
+  .flow-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 22px; border-bottom: 1px solid var(--line); background: var(--elev); }
+  .flow-head .title { font-size: 14px; color: var(--fg); letter-spacing: 0.02em; }
+  .flow-head .title .slash { color: var(--blood); }
+  .flow-head .title .timecode { color: var(--fg-muted); font-size: 11px; letter-spacing: 0.16em; margin-left: 14px; }
+  .flow-head .right { display: flex; gap: 14px; align-items: center; font-size: 11px; }
+  .version-dd { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--line-strong); color: var(--blood); letter-spacing: 0.12em; }
+  .version-dd .caret { color: var(--fg-faint); font-size: 9px; }
+
+  .flow-body { padding: 26px 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .stage { padding: 0 22px; border-right: 1px solid var(--line); }
+  .stage:last-child { border-right: none; }
+  .stage-num { font-size: 9px; letter-spacing: 0.28em; color: var(--fg-faint); margin-bottom: 4px; }
+  .stage-title { font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--fg); margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .stage-title .num { color: var(--blood); margin-right: 8px; }
+
+  .field { margin-bottom: 16px; }
+  .field-label { font-size: 9px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--fg-faint); margin-bottom: 6px; }
+  .field-input { background: var(--bg); border: 1px solid var(--line); padding: 12px 14px; color: var(--fg); font-family: var(--mono); font-size: 13px; min-height: 42px; }
+  .field-input.tall { min-height: 60px; }
+
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field-row.three { grid-template-columns: 2fr 1fr 1fr; }
+  .field-pill { background: var(--bg); border: 1px solid var(--line); padding: 9px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+  .field-pill .caret { color: var(--fg-faint); font-size: 9px; margin-left: 8px; }
+
+  .cost { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--warn); }
+
+  .preview-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0 8px; align-items: stretch; }
+  .preview-box { aspect-ratio: 9 / 16; background: linear-gradient(155deg, #2a1a10, #3a2418 40%, #1a1108); border: 1px solid var(--line); position: relative; display: grid; place-items: center; overflow: hidden; }
+  .preview-box::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 30% 30%, rgba(230, 145, 80, 0.18), transparent 60%); }
+  .preview-box .play { position: absolute; bottom: 12px; left: 12px; font-size: 18px; color: var(--fg); z-index: 1; }
+  .preview-box .time { position: absolute; bottom: 12px; right: 12px; font-size: 10px; color: var(--fg-muted); letter-spacing: 0.12em; z-index: 1; }
+  .preview-box .vbadge { position: absolute; top: 12px; left: 12px; font-size: 9px; letter-spacing: 0.22em; color: var(--blood); background: rgba(10,9,8,0.7); padding: 4px 8px; border: 1px solid var(--blood-faint); z-index: 1; }
+
+  .versions-list { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+  .vrow { display: flex; justify-content: space-between; align-items: center; padding: 9px 12px; border: 1px solid var(--line); background: var(--bg); }
+  .vrow:hover { border-color: var(--blood-faint); }
+  .vrow.active { border-color: var(--blood); background: var(--blood-soft); }
+  .vrow .vlabel { display: flex; gap: 12px; align-items: center; }
+  .vrow .vid { color: var(--blood); letter-spacing: 0.12em; font-size: 11px; min-width: 28px; }
+  .vrow .vdesc { color: var(--fg-muted); }
+  .vrow.active .vdesc { color: var(--fg); }
+  .vrow.add { border-style: dashed; color: var(--fg-faint); cursor: pointer; justify-content: center; }
+  .vrow.add:hover { color: var(--blood); border-color: var(--blood-faint); }
+
+  .gen-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0 4px; margin-top: 14px; border-top: 1px solid var(--line); }
+  .gen-row .gen-cost { font-size: 10px; letter-spacing: 0.16em; color: var(--warn); }
+
+  /* ───────────── FOOTER STRIP ───────────── */
+  .footstrip { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--fg-faint); display: flex; justify-content: space-between; }
+
+</style>
+</head>
+<body>
+
+  <!-- STATUS -->
+  <div class="statusbar">
+    <div class="left">
+      <span><span class="dot"></span>SYSTEM // ONLINE</span>
+      <span>BUILD 0.0.1 — MOCKUP</span>
+      <span>BYOM — KEYS LOCAL</span>
+    </div>
+    <div class="right">
+      <span>2026.06.01 / 14:42 UTC</span>
+      <span>HELLO@JOHNLACROIX.COM</span>
+    </div>
+  </div>
+
+  <!-- WORDMARK -->
+  <div class="wordmark">
+    <span class="painted">AI Cinema</span>
+    <span class="lockup">by Bloody Finger</span>
+  </div>
+  <div class="tagline">Cinematic video, made easy. Bring your own model.</div>
+
+  <!-- PROJECT HEADER -->
+  <div class="project-head">
+    <div class="project-meta">
+      <h1><span class="slash">//</span> Product Reveal</h1>
+      <div class="specs">
+        <span>18.0s</span><span>9 : 16</span><span>6 clips</span><span>v3 / draft</span>
+      </div>
+    </div>
+    <div class="project-actions">
+      <button class="btn ghost">Library</button>
+      <button class="btn ghost">Export</button>
+      <button class="btn">Preview</button>
+      <button class="btn primary">▶︎ Render</button>
+    </div>
+  </div>
+
+  <!-- LOOK BAR -->
+  <div class="lookbar">
+    <div class="slot">
+      <div class="label">// BRIEF</div>
+      <div class="value">Warm 35mm Hero <span class="caret">▾</span></div>
+    </div>
+    <div class="slot">
+      <div class="label">// GRADE</div>
+      <div class="value">Warm Cinematic <span class="caret">▾</span></div>
+    </div>
+    <div class="slot">
+      <div class="label">// MUSIC</div>
+      <div class="value">Cinematic Build <span class="caret">▾</span></div>
+    </div>
+    <div class="slot">
+      <div class="label">// TITLE STYLE</div>
+      <div class="value">BFS Mono — Bone <span class="caret">▾</span></div>
+    </div>
+  </div>
+
+  <!-- TIMELINE -->
+  <div class="timeline-wrap">
+    <div class="tl-label">
+      <span>// TIMELINE</span>
+      <span>Click a clip to open the flow · Click ◇ to set transitions</span>
+    </div>
+
+    <!-- ruler -->
+    <div class="ruler">
+      <span>0:00</span><span>0:03</span><span>0:06</span><span>0:09</span><span>0:12</span><span>0:15</span>
+    </div>
+
+    <!-- clips -->
+    <div class="clips-row">
+      <div class="clip">
+        <div class="clip-num">01 // CLIP</div>
+        <div class="clip-title">Open</div>
+        <div class="clip-meta"><span class="clip-version">v2 ▾</span><span class="clip-dur">3.0s</span></div>
+      </div>
+      <div class="clip" style="position: relative;">
+        <div class="trans-marker" style="left: 0;" data-type="fade" title="Crossfade 0.4s">◇</div>
+        <div class="clip-num">02 // CLIP</div>
+        <div class="clip-title">Reveal</div>
+        <div class="clip-meta"><span class="clip-version">v1 ▾</span><span class="clip-dur">3.0s</span></div>
+      </div>
+      <div class="clip active" style="position: relative;">
+        <div class="trans-marker" style="left: 0;" title="Cut">◇</div>
+        <div class="clip-num">03 // CLIP</div>
+        <div class="clip-title">Detail</div>
+        <div class="clip-meta"><span class="clip-version">v3 ▾</span><span class="clip-dur">3.0s</span></div>
+      </div>
+      <div class="clip" style="position: relative;">
+        <div class="trans-marker" style="left: 0;" data-type="fade" title="Crossfade 0.4s">◇</div>
+        <div class="clip-num">04 // CLIP</div>
+        <div class="clip-title">B-roll</div>
+        <div class="clip-meta"><span class="clip-version">v1 ▾</span><span class="clip-dur">3.0s</span></div>
+      </div>
+      <div class="clip empty" style="position: relative;">
+        <div class="trans-marker" style="left: 0;" title="Cut">◇</div>
+        <div class="clip-num">05 // TITLE</div>
+        <div class="clip-title">Available Now</div>
+        <div class="clip-meta"><span class="clip-version">— not yet</span><span class="clip-dur">3.0s</span></div>
+      </div>
+      <div class="clip empty" style="position: relative;">
+        <div class="trans-marker" style="left: 0;" data-type="fade" title="Fade to black">◇</div>
+        <div class="clip-num">06 // CLIP</div>
+        <div class="clip-title">CTA</div>
+        <div class="clip-meta"><span class="clip-version">— not yet</span><span class="clip-dur">3.0s</span></div>
+      </div>
+    </div>
+
+    <!-- VO TRACK -->
+    <div class="audio-row" style="margin-top: 14px;">
+      <div class="track-label">VO</div>
+      <div class="vo-seg" style="grid-column: 1 / 2;">v1 — <span class="vo-text">"Meet the new standard."</span></div>
+      <div class="vo-seg" style="grid-column: 3 / 5;">v2 — <span class="vo-text">"Hand-stitched. Considered. Built to outlast you."</span></div>
+      <div class="vo-seg" style="grid-column: 5 / 7; opacity: 0.5;">— pending</div>
+    </div>
+
+    <!-- MUSIC -->
+    <div class="audio-row" style="margin-top: 8px;">
+      <div class="track-label">MUSIC</div>
+      <div class="music-bed">
+        <span><strong>Cinematic Build</strong> · ElevenLabs Music · v1 · 18.0s · auto-ducks under VO −6dB</span>
+        <span>♪ ▾</span>
+      </div>
+    </div>
+
+    <!-- GRADE STRIP -->
+    <div class="audio-row" style="margin-top: 12px;">
+      <div class="grade-strip">
+        <span>Final pass · <strong>Warm Cinematic</strong> · exposure +0.2 · contrast +18 · warm mids · crushed blacks · teal shadow</span>
+        <span>⤓ EXPORT LUT</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLOW PANEL — section 03 open -->
+  <div class="flow-panel">
+    <div class="flow-head">
+      <div class="title"><span class="slash">//</span> 03 — Detail <span class="timecode">0:06 — 0:09</span></div>
+      <div class="right">
+        <div class="version-dd"><span>v3</span><span>macro orbit</span><span class="caret">▾</span></div>
+        <button class="btn ghost">✕ Close</button>
+      </div>
+    </div>
+
+    <div class="flow-body">
+
+      <!-- STAGE 1 — STILL -->
+      <div class="stage" style="padding-left: 0;">
+        <div class="stage-title"><span class="num">01</span>STILL</div>
+
+        <div class="field">
+          <div class="field-label">Image prompt</div>
+          <div class="field-input tall">macro detail, raw stitching, warm side light, shallow focus</div>
+        </div>
+
+        <div class="field-row three">
+          <div class="field">
+            <div class="field-label">Model</div>
+            <div class="field-pill">Flux 1.1 Pro <span class="caret">▾</span></div>
+          </div>
+          <div class="field">
+            <div class="field-label">Input</div>
+            <div class="field-pill">02 last frame <span class="caret">▾</span></div>
+          </div>
+          <div class="field">
+            <div class="field-label">Cost</div>
+            <div class="field-pill" style="color: var(--warn);">~ $0.04</div>
+          </div>
+        </div>
+
+        <div class="preview-row">
+          <div class="preview-box">
+            <span class="vbadge">s2 · active</span>
+            <span class="play">▶︎</span>
+            <span class="time">still</span>
+          </div>
+          <div class="versions-list">
+            <div class="vrow">
+              <div class="vlabel"><span class="vid">s1</span><span class="vdesc">cool tone, tight crop</span></div>
+              <span style="color: var(--fg-faint);">↻</span>
+            </div>
+            <div class="vrow active">
+              <div class="vlabel"><span class="vid">s2</span><span class="vdesc">warm side light</span></div>
+              <span style="color: var(--blood);">●</span>
+            </div>
+            <div class="vrow add">+ new still</div>
+          </div>
+        </div>
+
+        <div class="gen-row">
+          <span class="gen-cost">~ $0.04 per still</span>
+          <button class="btn primary">⏵ Generate still</button>
+        </div>
+      </div>
+
+      <!-- STAGE 2 — MOTION -->
+      <div class="stage" style="padding-right: 0;">
+        <div class="stage-title"><span class="num">02</span>MOTION</div>
+
+        <div class="field">
+          <div class="field-label">Motion prompt</div>
+          <div class="field-input tall">slow orbit left to right, breathing focus pull, no whip</div>
+        </div>
+
+        <div class="field-row three">
+          <div class="field">
+            <div class="field-label">Model</div>
+            <div class="field-pill">Runway Gen-4 <span class="caret">▾</span></div>
+          </div>
+          <div class="field">
+            <div class="field-label">Duration</div>
+            <div class="field-pill">3.0s <span class="caret">▾</span></div>
+          </div>
+          <div class="field">
+            <div class="field-label">Cost</div>
+            <div class="field-pill" style="color: var(--warn);">~ $1.20</div>
+          </div>
+        </div>
+
+        <div class="preview-row">
+          <div class="preview-box" style="background: linear-gradient(155deg, #281a14, #3a2418 30%, #2a1810 70%, #150d08);">
+            <span class="vbadge">v3 · active</span>
+            <span class="play">▶︎</span>
+            <span class="time">0:00 / 0:03</span>
+          </div>
+          <div class="versions-list">
+            <div class="vrow">
+              <div class="vlabel"><span class="vid">v1</span><span class="vdesc">static — no motion</span></div>
+              <span style="color: var(--fg-faint);">↻</span>
+            </div>
+            <div class="vrow">
+              <div class="vlabel"><span class="vid">v2</span><span class="vdesc">orbit — too fast</span></div>
+              <span style="color: var(--fg-faint);">↻</span>
+            </div>
+            <div class="vrow active">
+              <div class="vlabel"><span class="vid">v3</span><span class="vdesc">slow orbit — keeper</span></div>
+              <span style="color: var(--blood);">●</span>
+            </div>
+            <div class="vrow add">+ new version</div>
+          </div>
+        </div>
+
+        <div class="gen-row">
+          <span class="gen-cost">~ $1.20 per version · project total $4.80 of $20.00 cap</span>
+          <button class="btn primary">⏵ Generate v4</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footstrip">
+    <span>// AI CINEMA · BUILT FOR THE LOVE OF THE GAME · MIT</span>
+    <span>BLOODY FINGER SOFTWARE — 2026</span>
+  </div>
+
+</body>
+</html>
