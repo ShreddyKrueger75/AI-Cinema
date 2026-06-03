@@ -35,6 +35,7 @@ export type StoreState = {
   addClipSection: (afterSectionId?: string | null) => void;
   addTitleSection: (afterSectionId?: string | null) => void;
   removeSection: (sectionId: string) => void;
+  moveSection: (sectionId: string, direction: -1 | 1) => void;
 
   updateStill: (sectionId: string, stillId: string, patch: Partial<Omit<Still, "id">>) => void;
   addStill: (sectionId: string) => void;
@@ -94,7 +95,14 @@ function newId(prefix: string): string {
 function reindexAndRetotal(project: Project): Project {
   const sections = project.sections.map((s, i) => ({ ...s, index: i + 1 }));
   const duration_s = sections.reduce((acc, s) => acc + s.duration_s, 0);
-  return { ...project, sections, duration_s };
+  const vo_segments = project.vo_segments
+    .map((v) => {
+      const start_s = Math.min(v.start_s, Math.max(0, duration_s - 0.5));
+      const duration_s_clamped = Math.min(v.duration_s, Math.max(0.5, duration_s - start_s));
+      return { ...v, start_s, duration_s: duration_s_clamped };
+    })
+    .filter((v) => v.duration_s >= 0.5 && v.start_s < duration_s);
+  return { ...project, sections, duration_s, vo_segments };
 }
 
 function reconcileTransitions(project: Project): Project {
@@ -253,6 +261,18 @@ export const useStore = create<StoreState>()(
           const nextActive =
             state.activeSectionId === sectionId ? sections[0]?.id ?? null : state.activeSectionId;
           return { project: touch(next), activeSectionId: nextActive };
+        }),
+
+      moveSection: (sectionId, direction) =>
+        set((state) => {
+          const sections = [...state.project.sections];
+          const i = sections.findIndex((s) => s.id === sectionId);
+          const j = i + direction;
+          if (i < 0 || j < 0 || j >= sections.length) return state;
+          [sections[i], sections[j]] = [sections[j], sections[i]];
+          let next = reindexAndRetotal({ ...state.project, sections });
+          next = reconcileTransitions(next);
+          return { project: touch(next) };
         }),
 
       updateStill: (sectionId, stillId, patch) =>

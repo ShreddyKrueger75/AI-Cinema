@@ -12,6 +12,7 @@ import {
 import { selectActiveSection, useStore } from "@/lib/store";
 import type {
   Aspect,
+  Grade,
   Project,
   Section,
   Transition,
@@ -211,6 +212,8 @@ export default function HomePage() {
   const addClipSection = useStore((s) => s.addClipSection);
   const addTitleSection = useStore((s) => s.addTitleSection);
   const removeSection = useStore((s) => s.removeSection);
+  const moveSection = useStore((s) => s.moveSection);
+  const resetProject = useStore((s) => s.resetProject);
   const updateTransition = useStore((s) => s.updateTransition);
   const addVOSegment = useStore((s) => s.addVOSegment);
   const updateVOSegment = useStore((s) => s.updateVOSegment);
@@ -230,6 +233,15 @@ export default function HomePage() {
   const [editingTransitionId, setEditingTransitionId] = useState<string | null>(null);
   const [editingVOId, setEditingVOId] = useState<string | null>(null);
   const [lookOpen, setLookOpen] = useState<null | "brief" | "grade" | "music" | "title">(null);
+  const [renderOpen, setRenderOpen] = useState(false);
+
+  const handleReset = useCallback(() => {
+    if (confirm("Reset project to defaults? Unsaved work will be lost.")) resetProject();
+  }, [resetProject]);
+  const handleExportLUT = useCallback(() => {
+    if (!project.grade) return;
+    downloadCubeLUT(project.grade);
+  }, [project.grade]);
 
   const transitionsByTo = useMemo(() => {
     const m = new Map<string, Transition>();
@@ -309,10 +321,11 @@ export default function HomePage() {
           </div>
         </div>
         <div className="project-actions">
+          <button type="button" className="btn ghost" onClick={handleReset} title="Reset to defaults">↺ Reset</button>
           <button type="button" className="btn ghost" onClick={handleImport}>Import</button>
           <button type="button" className="btn ghost" onClick={handleExport}>Export</button>
-          <button type="button" className="btn">Preview</button>
-          <button type="button" className="btn primary">▶︎ Render</button>
+          <button type="button" className="btn" onClick={() => setRenderOpen(true)}>Preview</button>
+          <button type="button" className="btn primary" onClick={() => setRenderOpen(true)}>▶︎ Render</button>
         </div>
       </div>
 
@@ -442,17 +455,43 @@ export default function HomePage() {
                   <span className="clip-version">{versionLabel}</span>
                   <span className="clip-dur">{section.duration_s.toFixed(1)}s</span>
                 </div>
-                <button
-                  type="button"
-                  className="clip-remove"
-                  title="Remove section"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeSection(section.id);
-                  }}
-                >
-                  ✕
-                </button>
+                <div className="clip-actions">
+                  <button
+                    type="button"
+                    className="clip-act"
+                    title="Move left"
+                    disabled={section.index === 1}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      moveSection(section.id, -1);
+                    }}
+                  >
+                    ←
+                  </button>
+                  <button
+                    type="button"
+                    className="clip-act"
+                    title="Move right"
+                    disabled={section.index === project.sections.length}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      moveSection(section.id, 1);
+                    }}
+                  >
+                    →
+                  </button>
+                  <button
+                    type="button"
+                    className="clip-act remove"
+                    title="Remove section"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeSection(section.id);
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -564,22 +603,36 @@ export default function HomePage() {
         </div>
 
         <div className="audio-row" style={{ marginTop: 12 }}>
-          <button
-            type="button"
-            className="grade-strip"
-            onClick={() => setLookOpen("grade")}
-          >
-            <span>
-              Final pass · <strong>{project.grade?.name ?? "—"}</strong> · exposure +
-              {String(project.grade?.adjustments.exposure ?? 0)} · contrast +
-              {String(project.grade?.adjustments.contrast ?? 0)} · warm mids · crushed blacks · teal shadow
-            </span>
-            <span>⤓ EXPORT LUT</span>
-          </button>
+          <div className="grade-strip">
+            <button
+              type="button"
+              className="grade-strip-main"
+              onClick={() => setLookOpen("grade")}
+            >
+              <span>
+                Final pass · <strong>{project.grade?.name ?? "—"}</strong> · exposure +
+                {String(project.grade?.adjustments.exposure ?? 0)} · contrast +
+                {String(project.grade?.adjustments.contrast ?? 0)} · warm mids · crushed blacks · teal shadow
+              </span>
+            </button>
+            <button
+              type="button"
+              className="grade-export"
+              onClick={handleExportLUT}
+              disabled={!project.grade}
+              title="Export grade as .cube LUT"
+            >
+              ⤓ EXPORT LUT
+            </button>
+          </div>
         </div>
       </div>
 
       {activeSection ? <FlowPanel section={activeSection} project={project} /> : null}
+
+      {renderOpen ? (
+        <RenderDialog project={project} onClose={() => setRenderOpen(false)} />
+      ) : null}
 
       <div className="footstrip">
         <span>// AI CINEMA · BUILT FOR THE LOVE OF THE GAME · MIT</span>
@@ -695,6 +748,70 @@ function BriefEditor({
           placeholder="no logos, no text"
         />
       </Field>
+      <Field label="Reference images">
+        <RefList
+          refs={brief?.refs ?? []}
+          onChange={(refs) => onChange({ refs })}
+        />
+      </Field>
+    </div>
+  );
+}
+
+function RefList({
+  refs,
+  onChange,
+}: {
+  refs: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  return (
+    <div className="ref-list">
+      {refs.length > 0 ? (
+        <div className="ref-thumbs">
+          {refs.map((url, i) => (
+            <div key={`${url}|${i}`} className="ref-thumb">
+              <img src={url} alt={`ref ${i + 1}`} />
+              <button
+                type="button"
+                className="ref-remove"
+                title="Remove"
+                onClick={() => onChange(refs.filter((_, j) => j !== i))}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="ref-add">
+        <input
+          className="field-input"
+          placeholder="https://..."
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && draft.trim()) {
+              e.preventDefault();
+              onChange([...refs, draft.trim()]);
+              setDraft("");
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="btn ghost"
+          disabled={!draft.trim()}
+          onClick={() => {
+            if (!draft.trim()) return;
+            onChange([...refs, draft.trim()]);
+            setDraft("");
+          }}
+        >
+          + Add
+        </button>
+      </div>
     </div>
   );
 }
@@ -1682,6 +1799,245 @@ function ClipFlowBody({
           >
             ⏵ Generate motion
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────── LUT EXPORT ───────────── */
+
+function buildCubeLUT(grade: Grade): string {
+  const size = 17;
+  const adj = grade.adjustments;
+  const exposure = typeof adj.exposure === "number" ? adj.exposure : 0;
+  const contrast = typeof adj.contrast === "number" ? adj.contrast / 100 : 0;
+  const mids = typeof adj.mids === "string" ? adj.mids : "neutral";
+  const blacks = typeof adj.blacks === "string" ? adj.blacks : "neutral";
+  const shadow = typeof adj.shadow_tint === "string" ? adj.shadow_tint : "neutral";
+
+  const tintMap: Record<string, [number, number, number]> = {
+    neutral: [0, 0, 0],
+    teal:    [-0.04, 0.02, 0.06],
+    warm:    [0.05, 0.01, -0.04],
+    violet:  [0.03, -0.02, 0.05],
+    cool:    [-0.03, 0, 0.05],
+  };
+  const midShift = mids === "warm" ? [0.03, 0.01, -0.02] : mids === "cool" ? [-0.02, 0, 0.03] : [0, 0, 0];
+  const tint = tintMap[shadow] ?? [0, 0, 0];
+
+  const lines: string[] = [];
+  lines.push(`# AI Cinema grade: ${grade.name}`);
+  lines.push(`# exposure=${exposure} contrast=${contrast} mids=${mids} blacks=${blacks} shadow=${shadow}`);
+  lines.push(`LUT_3D_SIZE ${size}`);
+  lines.push("DOMAIN_MIN 0.0 0.0 0.0");
+  lines.push("DOMAIN_MAX 1.0 1.0 1.0");
+
+  const channel = (v: number, i: 0 | 1 | 2): number => {
+    let x = v;
+    x = x + exposure * 0.5;
+    x = (x - 0.5) * (1 + contrast) + 0.5;
+    const shadowWeight = Math.max(0, 1 - x * 2);
+    x += tint[i] * shadowWeight;
+    const midWeight = 1 - Math.abs(x - 0.5) * 2;
+    x += midShift[i] * Math.max(0, midWeight);
+    if (blacks === "crushed") x = x < 0.18 ? x * 0.7 : x;
+    else if (blacks === "lifted") x = x < 0.18 ? Math.min(0.25, x + 0.05) : x;
+    return Math.max(0, Math.min(1, x));
+  };
+
+  for (let b = 0; b < size; b++) {
+    for (let g = 0; g < size; g++) {
+      for (let r = 0; r < size; r++) {
+        const rv = r / (size - 1);
+        const gv = g / (size - 1);
+        const bv = b / (size - 1);
+        lines.push(
+          `${channel(rv, 0).toFixed(5)} ${channel(gv, 1).toFixed(5)} ${channel(bv, 2).toFixed(5)}`,
+        );
+      }
+    }
+  }
+  return lines.join("\n");
+}
+
+function downloadCubeLUT(grade: Grade): void {
+  const content = buildCubeLUT(grade);
+  const blob = new Blob([content], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const safe = grade.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "grade";
+  a.href = url;
+  a.download = `${safe}.cube`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ───────────── RENDER DIALOG ───────────── */
+
+function RenderDialog({ project, onClose }: { project: Project; onClose: () => void }) {
+  const sections = project.sections;
+  const transitions = project.transitions;
+  const trByTo = useMemo(() => {
+    const m = new Map<string, Transition>();
+    for (const t of transitions) m.set(t.to_section_id, t);
+    return m;
+  }, [transitions]);
+
+  let stillCostTotal = 0;
+  let motionCostTotal = 0;
+  for (const s of sections) {
+    if (s.type !== "clip") continue;
+    for (const still of s.stills) {
+      if (still.output_url) stillCostTotal += imageModelCost(still.model);
+    }
+    for (const v of s.versions) {
+      if (v.kind === "clip" && v.output_url) {
+        motionCostTotal += motionModelCost(v.motion.model, v.motion.duration_s);
+      }
+    }
+  }
+  const activeMotionCost = sections.reduce((acc, s) => {
+    if (s.type !== "clip") return acc;
+    const active = s.versions.find((v) => v.id === s.active_version_id);
+    if (active && active.kind === "clip") {
+      return acc + motionModelCost(active.motion.model, active.motion.duration_s);
+    }
+    return acc;
+  }, 0);
+  const activeStillCost = sections.reduce((acc, s) => {
+    if (s.type !== "clip") return acc;
+    const activeVer = s.versions.find((v) => v.id === s.active_version_id);
+    const stillId = activeVer && activeVer.kind === "clip" ? activeVer.still_ref : s.active_still_id;
+    const still = stillId ? s.stills.find((st) => st.id === stillId) : null;
+    if (still) return acc + imageModelCost(still.model);
+    return acc;
+  }, 0);
+
+  const readiness = sections.map((s) => {
+    if (s.type === "title") {
+      const v = s.versions.find((x) => x.id === s.active_version_id);
+      const ready = v && v.kind === "title" && v.text.trim().length > 0;
+      return { id: s.id, label: s.title, ready, reason: ready ? "title text set" : "missing title text" };
+    }
+    const v = s.versions.find((x) => x.id === s.active_version_id);
+    if (!v || v.kind !== "clip") {
+      return { id: s.id, label: s.title, ready: false, reason: "no active version" };
+    }
+    if (!v.output_url) {
+      return { id: s.id, label: s.title, ready: false, reason: "motion not generated" };
+    }
+    return { id: s.id, label: s.title, ready: true, reason: "ready" };
+  });
+  const allReady = readiness.every((r) => r.ready);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <div className="modal-title">// RENDER</div>
+            <div className="modal-sub">
+              {project.name} · {project.duration_s.toFixed(1)}s · {project.aspect.replace(":", " : ")} · {sections.length} sections
+            </div>
+          </div>
+          <button type="button" className="btn ghost" onClick={onClose}>✕ Close</button>
+        </div>
+
+        <div className="modal-body">
+          <div className="modal-section">
+            <div className="modal-section-title">// SHOT LIST</div>
+            <ol className="shot-list">
+              {sections.map((s, i) => {
+                const r = readiness[i];
+                const tr = trByTo.get(s.id);
+                const activeVer = s.versions.find((v) => v.id === s.active_version_id);
+                const versionLabel =
+                  activeVer
+                    ? `v${s.versions.findIndex((v) => v.id === activeVer.id) + 1} — ${activeVer.label}`
+                    : "—";
+                return (
+                  <li key={s.id} className={`shot-row ${r.ready ? "ok" : "miss"}`}>
+                    <span className="shot-idx">{s.index.toString().padStart(2, "0")}</span>
+                    <span className="shot-type">{s.type.toUpperCase()}</span>
+                    <span className="shot-title">{s.title}</span>
+                    <span className="shot-version">{versionLabel}</span>
+                    <span className="shot-dur">{s.duration_s.toFixed(1)}s</span>
+                    <span className="shot-trans">
+                      {tr ? formatTransition(tr.type, tr.duration_s) : "—"}
+                    </span>
+                    <span className={`shot-status ${r.ready ? "ok" : "miss"}`}>
+                      {r.ready ? "● ready" : "○ " + r.reason}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+
+          <div className="modal-section">
+            <div className="modal-section-title">// AUDIO</div>
+            <div className="audio-summary">
+              <div className="audio-line">
+                <span className="al-label">VO</span>
+                <span className="al-value">
+                  {project.vo_segments.length} segment{project.vo_segments.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="audio-line">
+                <span className="al-label">Music</span>
+                <span className="al-value">
+                  {project.music_track?.name ?? "—"} · {project.music_track?.model ?? "—"}
+                </span>
+              </div>
+              <div className="audio-line">
+                <span className="al-label">Grade</span>
+                <span className="al-value">{project.grade?.name ?? "—"}</span>
+              </div>
+              <div className="audio-line">
+                <span className="al-label">Brief</span>
+                <span className="al-value">{project.brief?.name ?? "—"}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="modal-section">
+            <div className="modal-section-title">// COST</div>
+            <div className="cost-grid">
+              <div>
+                <div className="cost-label">Stills (active)</div>
+                <div className="cost-value">{formatCost(activeStillCost)}</div>
+              </div>
+              <div>
+                <div className="cost-label">Motion (active)</div>
+                <div className="cost-value">{formatCost(activeMotionCost)}</div>
+              </div>
+              <div>
+                <div className="cost-label">Spent total</div>
+                <div className="cost-value muted">
+                  {formatCost(stillCostTotal + motionCostTotal)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-foot">
+          <span className={`render-status ${allReady ? "ok" : "miss"}`}>
+            {allReady
+              ? "All sections ready"
+              : `${readiness.filter((r) => !r.ready).length} section${
+                  readiness.filter((r) => !r.ready).length === 1 ? "" : "s"
+                } not ready`}
+          </span>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn primary" disabled title="Render pipeline ships next">
+              ▶︎ Render (ffmpeg.wasm pending)
+            </button>
+          </div>
         </div>
       </div>
     </div>
