@@ -30,6 +30,13 @@ import {
   motionModelCost,
 } from "@/lib/models";
 import { kenBurnsFromPrompt, newSeed, pollinationsUrl } from "@/lib/generate";
+import {
+  PROVIDERS,
+  maskKey,
+  providerForModel,
+  useProviderKeys,
+  type ProviderId,
+} from "@/lib/providers";
 
 const ASPECT_OPTIONS: Aspect[] = ["9:16", "16:9", "1:1"];
 
@@ -223,10 +230,19 @@ export default function HomePage() {
   const updateMusic = useStore((s) => s.updateMusic);
   const updateTitleStyle = useStore((s) => s.updateTitleStyle);
 
+  const providerKeys = useProviderKeys((s) => s.keys);
+  const setProviderKey = useProviderKeys((s) => s.setKey);
+  const removeProviderKey = useProviderKeys((s) => s.removeKey);
+
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
-    Promise.resolve(useStore.persist.rehydrate()).finally(() => setHydrated(true));
+    Promise.all([
+      Promise.resolve(useStore.persist.rehydrate()),
+      Promise.resolve(useProviderKeys.persist.rehydrate()),
+    ]).finally(() => setHydrated(true));
   }, []);
+
+  const configuredKeyCount = Object.values(providerKeys).filter((v) => v && v.trim()).length;
 
   const [aspectMenuOpen, setAspectMenuOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -234,6 +250,7 @@ export default function HomePage() {
   const [editingVOId, setEditingVOId] = useState<string | null>(null);
   const [lookOpen, setLookOpen] = useState<null | "brief" | "grade" | "music" | "title">(null);
   const [renderOpen, setRenderOpen] = useState(false);
+  const [providersOpen, setProvidersOpen] = useState(false);
 
   const handleReset = useCallback(() => {
     if (confirm("Reset project to defaults? Unsaved work will be lost.")) resetProject();
@@ -265,7 +282,17 @@ export default function HomePage() {
         <div className="left">
           <span><span className="dot" />SYSTEM // ONLINE</span>
           <span>BUILD 0.0.1</span>
-          <span>FREE PREVIEW · NO KEY NEEDED</span>
+          <button
+            type="button"
+            className="status-link"
+            onClick={() => setProvidersOpen(true)}
+            title="Manage provider API keys"
+          >
+            <span className={`dot ${configuredKeyCount === 0 ? "warn" : ""}`} />
+            {configuredKeyCount === 0
+              ? "FREE PREVIEW · NO KEY NEEDED"
+              : `PROVIDERS // ${configuredKeyCount} KEY${configuredKeyCount === 1 ? "" : "S"}`}
+          </button>
         </div>
         <div className="right">
           <span>{hydrated ? "STATE // PERSISTED" : "STATE // EPHEMERAL"}</span>
@@ -321,6 +348,14 @@ export default function HomePage() {
           </div>
         </div>
         <div className="project-actions">
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => setProvidersOpen(true)}
+            title="API keys"
+          >
+            🔑 Keys{configuredKeyCount > 0 ? ` (${configuredKeyCount})` : ""}
+          </button>
           <button type="button" className="btn ghost" onClick={handleReset} title="Reset to defaults">↺ Reset</button>
           <button type="button" className="btn ghost" onClick={handleImport}>Import</button>
           <button type="button" className="btn ghost" onClick={handleExport}>Export</button>
@@ -628,10 +663,26 @@ export default function HomePage() {
         </div>
       </div>
 
-      {activeSection ? <FlowPanel section={activeSection} project={project} /> : null}
+      {activeSection ? (
+        <FlowPanel
+          section={activeSection}
+          project={project}
+          providerKeys={providerKeys}
+          onOpenProviders={() => setProvidersOpen(true)}
+        />
+      ) : null}
 
       {renderOpen ? (
         <RenderDialog project={project} onClose={() => setRenderOpen(false)} />
+      ) : null}
+
+      {providersOpen ? (
+        <ProvidersDialog
+          keys={providerKeys}
+          onSetKey={setProviderKey}
+          onRemoveKey={removeProviderKey}
+          onClose={() => setProvidersOpen(false)}
+        />
       ) : null}
 
       <div className="footstrip">
@@ -1140,7 +1191,17 @@ function VOSegmentEditor({
 
 /* ───────────── FLOW PANEL ───────────── */
 
-function FlowPanel({ section, project }: { section: Section; project: Project }) {
+function FlowPanel({
+  section,
+  project,
+  providerKeys,
+  onOpenProviders,
+}: {
+  section: Section;
+  project: Project;
+  providerKeys: Partial<Record<ProviderId, string>>;
+  onOpenProviders: () => void;
+}) {
   const setActiveSection = useStore((s) => s.setActiveSection);
   const setActiveVersion = useStore((s) => s.setActiveVersion);
   const setActiveStill = useStore((s) => s.setActiveStill);
@@ -1176,11 +1237,30 @@ function FlowPanel({ section, project }: { section: Section; project: Project })
       ? section.stills.find((s) => s.id === activeVersion.still_ref) ?? activeStill
       : activeStill;
 
+  const modelHasKey = (modelId: string): boolean => {
+    const pid = providerForModel(modelId);
+    return pid ? !!providerKeys[pid] : false;
+  };
+  const promptForKey = (providerName: string) => {
+    if (
+      confirm(
+        `${providerName} needs an API key. Open Providers to add one? (Or switch to a free model.)`,
+      )
+    ) {
+      onOpenProviders();
+    }
+  };
+
   const handleGenerateStill = () => {
     if (!activeStill) return;
+    if (!isImageModelFree(activeStill.model) && !modelHasKey(activeStill.model)) {
+      const pid = providerForModel(activeStill.model);
+      promptForKey(PROVIDERS.find((p) => p.id === pid)?.name ?? activeStill.model);
+      return;
+    }
     if (!isImageModelFree(activeStill.model)) {
       alert(
-        `${activeStill.model} needs an API key. Switch to "Pollinations (free)" to generate without one.`,
+        `Live ${activeStill.model} generation ships next. For now, switch to "Pollinations (free)" to preview.`,
       );
       return;
     }
@@ -1195,9 +1275,14 @@ function FlowPanel({ section, project }: { section: Section; project: Project })
 
   const handleGenerateMotion = () => {
     if (!activeVersion || activeVersion.kind !== "clip") return;
+    if (!isMotionModelFree(activeVersion.motion.model) && !modelHasKey(activeVersion.motion.model)) {
+      const pid = providerForModel(activeVersion.motion.model);
+      promptForKey(PROVIDERS.find((p) => p.id === pid)?.name ?? activeVersion.motion.model);
+      return;
+    }
     if (!isMotionModelFree(activeVersion.motion.model)) {
       alert(
-        `${activeVersion.motion.model} needs an API key. Switch to "Ken Burns (free)" to preview motion without one.`,
+        `Live ${activeVersion.motion.model} generation ships next. For now, switch to "Ken Burns (free)" to preview.`,
       );
       return;
     }
@@ -1343,6 +1428,7 @@ function FlowPanel({ section, project }: { section: Section; project: Project })
           motionDirection={motionDirection}
           motionStillUrl={motionStillUrl}
           priorClipSections={priorClipSections}
+          modelHasKey={modelHasKey}
           onUpdateStill={(stillId, patch) => updateStill(section.id, stillId, patch)}
           onAddStill={() => addStill(section.id)}
           onRemoveStill={(stillId) => removeStill(section.id, stillId)}
@@ -1462,6 +1548,7 @@ type ClipFlowBodyProps = {
   motionDirection: "in" | "out" | "left" | "right" | null;
   motionStillUrl: string | null;
   priorClipSections: Section[];
+  modelHasKey: (modelId: string) => boolean;
   onUpdateStill: (
     stillId: string,
     patch: Partial<Omit<Section["stills"][number], "id">>,
@@ -1493,6 +1580,7 @@ function ClipFlowBody({
   motionDirection,
   motionStillUrl,
   priorClipSections,
+  modelHasKey,
   onUpdateStill,
   onAddStill,
   onRemoveStill,
@@ -1508,6 +1596,12 @@ function ClipFlowBody({
   const motionCost = activeVersion
     ? motionModelCost(activeVersion.motion.model, activeVersion.motion.duration_s)
     : 0;
+  const stillNeedsKey =
+    activeStill && !isImageModelFree(activeStill.model) && !modelHasKey(activeStill.model);
+  const motionNeedsKey =
+    activeVersion &&
+    !isMotionModelFree(activeVersion.motion.model) &&
+    !modelHasKey(activeVersion.motion.model);
 
   const updateStillLabel = useCallback(
     (label: string) => activeStill && onUpdateStill(activeStill.id, { label }),
@@ -1557,9 +1651,14 @@ function ClipFlowBody({
                   activeStill && onUpdateStill(activeStill.id, { model: e.target.value })
                 }
               >
-                {IMAGE_MODELS.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label}</option>
-                ))}
+                {IMAGE_MODELS.map((m) => {
+                  const needsKey = !m.free && !modelHasKey(m.id);
+                  return (
+                    <option key={m.id} value={m.id}>
+                      {m.label}{needsKey ? "  (key required)" : ""}
+                    </option>
+                  );
+                })}
               </select>
               <span className="caret">▾</span>
             </div>
@@ -1647,7 +1746,10 @@ function ClipFlowBody({
         </div>
 
         <div className="gen-row">
-          <span className="gen-cost">{formatCost(stillCost)} per still</span>
+          <span className={`gen-cost ${stillNeedsKey ? "warn" : ""}`}>
+            {stillNeedsKey ? "⊘ key required · " : ""}
+            {formatCost(stillCost)} per still
+          </span>
           <button
             type="button"
             className="btn primary"
@@ -1698,9 +1800,14 @@ function ClipFlowBody({
                   onUpdateClipVersion(activeVersion.id, { motion: { model: e.target.value } })
                 }
               >
-                {MOTION_MODELS.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label}</option>
-                ))}
+                {MOTION_MODELS.map((m) => {
+                  const needsKey = !m.free && !modelHasKey(m.id);
+                  return (
+                    <option key={m.id} value={m.id}>
+                      {m.label}{needsKey ? "  (key required)" : ""}
+                    </option>
+                  );
+                })}
               </select>
               <span className="caret">▾</span>
             </div>
@@ -1790,7 +1897,10 @@ function ClipFlowBody({
         </div>
 
         <div className="gen-row">
-          <span className="gen-cost">{formatCost(motionCost)} per version</span>
+          <span className={`gen-cost ${motionNeedsKey ? "warn" : ""}`}>
+            {motionNeedsKey ? "⊘ key required · " : ""}
+            {formatCost(motionCost)} per version
+          </span>
           <button
             type="button"
             className="btn primary"
@@ -2039,6 +2149,204 @@ function RenderDialog({ project, onClose }: { project: Project; onClose: () => v
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────── PROVIDERS DIALOG ───────────── */
+
+function ProvidersDialog({
+  keys,
+  onSetKey,
+  onRemoveKey,
+  onClose,
+}: {
+  keys: Partial<Record<ProviderId, string>>;
+  onSetKey: (id: ProviderId, key: string) => void;
+  onRemoveKey: (id: ProviderId) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <div className="modal-title">// PROVIDERS</div>
+            <div className="modal-sub">
+              Bring your own model · keys stay in your browser · calls go direct to the provider
+            </div>
+          </div>
+          <button type="button" className="btn ghost" onClick={onClose}>✕ Close</button>
+        </div>
+
+        <div className="modal-body">
+          <div className="providers-notice">
+            <strong>Zero-server stance.</strong> Your keys live in this browser&apos;s localStorage and
+            are never sent to any AI Cinema server. Export does not include keys.
+          </div>
+
+          <div className="providers-list">
+            {PROVIDERS.map((p) => {
+              const stored = keys[p.id] ?? "";
+              const connected = stored.trim().length > 0;
+              return (
+                <ProviderRow
+                  key={p.id}
+                  providerId={p.id}
+                  name={p.name}
+                  surfaces={p.surfaces}
+                  signupUrl={p.signup_url}
+                  notes={p.notes}
+                  keyPrefix={p.key_prefix}
+                  storedKey={stored}
+                  connected={connected}
+                  onSetKey={(k) => onSetKey(p.id, k)}
+                  onRemoveKey={() => onRemoveKey(p.id)}
+                />
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="modal-foot">
+          <span className="render-status">
+            {Object.values(keys).filter((v) => v && v.trim()).length} of {PROVIDERS.length} configured
+          </span>
+          <button type="button" className="btn ghost" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProviderRow({
+  providerId,
+  name,
+  surfaces,
+  signupUrl,
+  notes,
+  keyPrefix,
+  storedKey,
+  connected,
+  onSetKey,
+  onRemoveKey,
+}: {
+  providerId: ProviderId;
+  name: string;
+  surfaces: ("image" | "motion" | "voice" | "music" | "text")[];
+  signupUrl: string;
+  notes?: string;
+  keyPrefix?: string;
+  storedKey: string;
+  connected: boolean;
+  onSetKey: (key: string) => void;
+  onRemoveKey: () => void;
+}) {
+  const [editing, setEditing] = useState(!connected);
+  const [draft, setDraft] = useState("");
+  const [show, setShow] = useState(false);
+
+  const commit = () => {
+    if (!draft.trim()) return;
+    onSetKey(draft);
+    setDraft("");
+    setEditing(false);
+    setShow(false);
+  };
+
+  return (
+    <div className={`provider-row ${connected ? "connected" : ""}`}>
+      <div className="provider-head">
+        <div className="provider-id">
+          <span className={`prov-dot ${connected ? "" : "warn"}`} />
+          <span className="prov-name">{name}</span>
+          <span className="prov-tag">{providerId}</span>
+        </div>
+        <div className="provider-surfaces">
+          {surfaces.map((s) => (
+            <span key={s} className="surface-tag">{s}</span>
+          ))}
+        </div>
+      </div>
+      {notes ? <div className="provider-notes">{notes}</div> : null}
+      <div className="provider-key">
+        {editing ? (
+          <>
+            <input
+              className="field-input"
+              type={show ? "text" : "password"}
+              autoFocus
+              spellCheck={false}
+              autoComplete="off"
+              placeholder={keyPrefix ? `${keyPrefix}…` : "API key"}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commit();
+                }
+                if (e.key === "Escape") {
+                  setEditing(connected ? false : true);
+                  setDraft("");
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn ghost provider-act"
+              onClick={() => setShow((v) => !v)}
+            >
+              {show ? "Hide" : "Show"}
+            </button>
+            <button
+              type="button"
+              className="btn provider-act"
+              disabled={!draft.trim()}
+              onClick={commit}
+            >
+              Save
+            </button>
+            {connected ? (
+              <button
+                type="button"
+                className="btn ghost provider-act"
+                onClick={() => {
+                  setEditing(false);
+                  setDraft("");
+                }}
+              >
+                Cancel
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <div className="field-input read masked">{maskKey(storedKey)}</div>
+            <button
+              type="button"
+              className="btn ghost provider-act"
+              onClick={() => setEditing(true)}
+            >
+              Replace
+            </button>
+            <button
+              type="button"
+              className="btn ghost provider-act danger"
+              onClick={() => {
+                if (confirm(`Remove ${name} API key from this browser?`)) onRemoveKey();
+              }}
+            >
+              Remove
+            </button>
+          </>
+        )}
+      </div>
+      <div className="provider-meta">
+        <a className="provider-link" href={signupUrl} target="_blank" rel="noreferrer">
+          Get a {name} key ↗
+        </a>
       </div>
     </div>
   );
