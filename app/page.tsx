@@ -962,6 +962,15 @@ export default function HomePage() {
         </LookSlot>
       </div>
 
+      <PreviewStage
+        project={project}
+        playPosition={playPosition}
+        activeSectionId={activeSectionId}
+        isPlaying={playPosition !== null}
+        onTogglePlay={togglePreview}
+        onStop={stopPreview}
+      />
+
       <div className="timeline-wrap">
         <div className="tl-label">
           <span>// TIMELINE</span>
@@ -1384,6 +1393,193 @@ export default function HomePage() {
 
       <ToastViewport />
     </>
+  );
+}
+
+/* ───────────── PREVIEW STAGE ───────────── */
+
+function PreviewStage({
+  project,
+  playPosition,
+  activeSectionId,
+  isPlaying,
+  onTogglePlay,
+  onStop,
+}: {
+  project: Project;
+  playPosition: number | null;
+  activeSectionId: string | null;
+  isPlaying: boolean;
+  onTogglePlay: () => void;
+  onStop: () => void;
+}) {
+  const setActiveSection = useStore((s) => s.setActiveSection);
+
+  const currentIndex = useMemo(() => {
+    if (playPosition !== null) return playPosition;
+    const i = project.sections.findIndex((s) => s.id === activeSectionId);
+    return i >= 0 ? i : 0;
+  }, [playPosition, activeSectionId, project.sections]);
+
+  const section = project.sections[currentIndex];
+  if (!section) {
+    return (
+      <div className="preview-stage empty">
+        <div className="stage-empty">No sections yet — add a clip or title to begin.</div>
+      </div>
+    );
+  }
+
+  const activeVersion = section.versions.find((v) => v.id === section.active_version_id) ?? null;
+  const activeStill = section.stills.find((s) => s.id === section.active_still_id) ?? null;
+  const referencedStill =
+    activeVersion && activeVersion.kind === "clip" && activeVersion.still_ref
+      ? section.stills.find((s) => s.id === activeVersion.still_ref) ?? activeStill
+      : activeStill;
+
+  const motionOutput = activeVersion && activeVersion.kind === "clip" ? activeVersion.output_url : undefined;
+  const motionVideoUrl =
+    motionOutput && /^https?:\/\//.test(motionOutput) ? motionOutput : null;
+  const kbDirection =
+    motionOutput && motionOutput.startsWith("kenburns:")
+      ? (motionOutput.slice("kenburns:".length) as "in" | "out" | "left" | "right")
+      : null;
+  const stillUrl = referencedStill?.output_url ?? null;
+
+  const startSeconds = project.sections
+    .slice(0, currentIndex)
+    .reduce((acc, s) => acc + s.duration_s, 0);
+  const total = project.duration_s;
+
+  const aspectRatio =
+    project.aspect === "16:9" ? "16 / 9" : project.aspect === "1:1" ? "1 / 1" : "9 / 16";
+
+  return (
+    <div className="preview-stage">
+      <div className="stage-canvas-wrap">
+        <div
+          className={`stage-canvas aspect-${project.aspect.replace(":", "-")}`}
+          style={{ aspectRatio }}
+        >
+          {section.type === "title" ? (
+            <TitleCardLive
+              text={
+                activeVersion && activeVersion.kind === "title" ? activeVersion.text : ""
+              }
+              style={project.title_settings}
+              isPlaying={isPlaying}
+              duration={section.duration_s}
+            />
+          ) : motionVideoUrl ? (
+            <video
+              key={motionVideoUrl}
+              src={motionVideoUrl}
+              className="stage-video"
+              autoPlay={isPlaying}
+              muted
+              loop
+              playsInline
+              controls={!isPlaying}
+            />
+          ) : stillUrl ? (
+            <img
+              key={`${stillUrl}|${kbDirection}|${section.duration_s}`}
+              src={stillUrl}
+              alt={section.title}
+              className={`stage-img${kbDirection ? ` kb kb-${kbDirection}` : ""}`}
+              style={
+                kbDirection
+                  ? { animationDuration: `${activeVersion && activeVersion.kind === "clip" ? activeVersion.motion.duration_s : section.duration_s}s` }
+                  : undefined
+              }
+            />
+          ) : (
+            <div className="stage-empty">
+              <span>no still generated</span>
+              <span className="stage-empty-hint">click section ▾ to open the flow panel</span>
+            </div>
+          )}
+          <div className="stage-hud">
+            <span className="stage-idx">{section.index.toString().padStart(2, "0")}</span>
+            <span className="stage-title-text">{section.title}</span>
+            <span className="stage-type">{section.type.toUpperCase()}</span>
+          </div>
+        </div>
+      </div>
+      <div className="stage-controls">
+        <button
+          type="button"
+          className="stage-prev"
+          title="Previous section"
+          onClick={() => {
+            const next = currentIndex <= 0 ? project.sections.length - 1 : currentIndex - 1;
+            setActiveSection(project.sections[next].id);
+          }}
+        >
+          ⏮
+        </button>
+        <button
+          type="button"
+          className={`stage-play ${isPlaying ? "playing" : ""}`}
+          onClick={onTogglePlay}
+          title={isPlaying ? "Pause (Space)" : "Play timeline (Space)"}
+        >
+          {isPlaying ? "❚❚" : "▶"}
+        </button>
+        <button
+          type="button"
+          className="stage-prev"
+          title="Stop"
+          onClick={onStop}
+          disabled={!isPlaying}
+        >
+          ◼
+        </button>
+        <button
+          type="button"
+          className="stage-prev"
+          title="Next section"
+          onClick={() => {
+            const next = currentIndex >= project.sections.length - 1 ? 0 : currentIndex + 1;
+            setActiveSection(project.sections[next].id);
+          }}
+        >
+          ⏭
+        </button>
+        <div className="stage-timecode">
+          <span>{formatTimecode(startSeconds)}</span>
+          <span className="stage-divider">/</span>
+          <span>{formatTimecode(total)}</span>
+          <span className="stage-aspect">{project.aspect.replace(":", " : ")}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TitleCardLive({
+  text,
+  style,
+  isPlaying,
+  duration,
+}: {
+  text: string;
+  style: Project["title_settings"];
+  isPlaying: boolean;
+  duration: number;
+}) {
+  return (
+    <div
+      className="stage-title-card"
+      style={{
+        background: style?.background_color ?? "#0a0908",
+        color: style?.color ?? "#f4f1ea",
+        fontFamily: style?.font ?? "var(--font-display)",
+        animationDuration: isPlaying ? `${duration}s` : undefined,
+      }}
+    >
+      <span>{text}</span>
+    </div>
   );
 }
 
