@@ -39,6 +39,12 @@ import {
 } from "@/lib/providers";
 import { useLibrary, type LibraryItem, type LibraryKind } from "@/lib/library";
 import { TEMPLATES } from "@/lib/templates";
+import { useGenState, stillJobKey, motionJobKey, type GenSlot } from "@/lib/genstate";
+import {
+  composePromptWithBrief,
+  isReplicateImageModel,
+  runReplicateImage,
+} from "@/lib/replicate";
 
 const ASPECT_OPTIONS: Aspect[] = ["9:16", "16:9", "1:1"];
 
@@ -864,6 +870,7 @@ export default function HomePage() {
           project={project}
           providerKeys={providerKeys}
           onOpenProviders={() => setProvidersOpen(true)}
+          onProviderKeyMissing={() => setProvidersOpen(true)}
         />
       ) : null}
 
@@ -1570,11 +1577,13 @@ function FlowPanel({
   project,
   providerKeys,
   onOpenProviders,
+  onProviderKeyMissing,
 }: {
   section: Section;
   project: Project;
   providerKeys: Partial<Record<ProviderId, string>>;
   onOpenProviders: () => void;
+  onProviderKeyMissing: () => void;
 }) {
   const setActiveSection = useStore((s) => s.setActiveSection);
   const setActiveVersion = useStore((s) => s.setActiveVersion);
@@ -1611,6 +1620,16 @@ function FlowPanel({
       ? section.stills.find((s) => s.id === activeVersion.still_ref) ?? activeStill
       : activeStill;
 
+  const setJob = useGenState((s) => s.setJob);
+  const clearJob = useGenState((s) => s.clearJob);
+  const jobs = useGenState((s) => s.jobs);
+
+  const stillJob = activeStill ? jobs[stillJobKey(section.id, activeStill.id)] : undefined;
+  const motionJob =
+    activeVersion && activeVersion.kind === "clip"
+      ? jobs[motionJobKey(section.id, activeVersion.id)]
+      : undefined;
+
   const modelHasKey = (modelId: string): boolean => {
     const pid = providerForModel(modelId);
     return pid ? !!providerKeys[pid] : false;
@@ -1621,30 +1640,61 @@ function FlowPanel({
         `${providerName} needs an API key. Open Providers to add one? (Or switch to a free model.)`,
       )
     ) {
-      onOpenProviders();
+      onProviderKeyMissing();
     }
   };
 
-  const handleGenerateStill = () => {
+  const handleGenerateStill = async () => {
     if (!activeStill) return;
-    if (!isImageModelFree(activeStill.model) && !modelHasKey(activeStill.model)) {
-      const pid = providerForModel(activeStill.model);
-      promptForKey(PROVIDERS.find((p) => p.id === pid)?.name ?? activeStill.model);
-      return;
-    }
-    if (!isImageModelFree(activeStill.model)) {
-      alert(
-        `Live ${activeStill.model} generation ships next. For now, switch to "Pollinations (free)" to preview.`,
-      );
-      return;
-    }
-    const url = pollinationsUrl(
+    const jobKey = stillJobKey(section.id, activeStill.id);
+    if (jobs[jobKey]?.status === "running") return;
+
+    const modelId = activeStill.model;
+    const composedPrompt = composePromptWithBrief(
       activeStill.image_prompt,
-      project.aspect,
-      newSeed(),
       project.brief?.visual,
     );
-    updateStill(section.id, activeStill.id, { output_url: url });
+
+    if (isImageModelFree(modelId)) {
+      const url = pollinationsUrl(
+        activeStill.image_prompt,
+        project.aspect,
+        newSeed(),
+        project.brief?.visual,
+      );
+      updateStill(section.id, activeStill.id, { output_url: url });
+      return;
+    }
+
+    if (!modelHasKey(modelId)) {
+      const pid = providerForModel(modelId);
+      promptForKey(PROVIDERS.find((p) => p.id === pid)?.name ?? modelId);
+      return;
+    }
+
+    const pid = providerForModel(modelId);
+    if (pid === "replicate" && isReplicateImageModel(modelId)) {
+      const token = providerKeys.replicate!;
+      setJob(jobKey, { status: "running", startedAt: Date.now() });
+      try {
+        const url = await runReplicateImage({
+          model: modelId,
+          prompt: composedPrompt,
+          aspect: project.aspect,
+          apiToken: token,
+        });
+        updateStill(section.id, activeStill.id, { output_url: url });
+        clearJob(jobKey);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setJob(jobKey, { status: "error", error: message });
+      }
+      return;
+    }
+
+    alert(
+      `Live ${modelId} generation isn't wired yet. Switch to "Pollinations (free)" or Flux / Schnell / SDXL / Ideogram (Replicate) to generate.`,
+    );
   };
 
   const handleGenerateMotion = () => {
@@ -1675,6 +1725,15 @@ function FlowPanel({
       output_url: `kenburns:${direction}`,
       still_ref: activeVersion.still_ref ?? activeStill?.id ?? null,
     });
+  };
+
+  const dismissStillError = () => {
+    if (!activeStill) return;
+    clearJob(stillJobKey(section.id, activeStill.id));
+  };
+  const dismissMotionError = () => {
+    if (!activeVersion) return;
+    clearJob(motionJobKey(section.id, activeVersion.id));
   };
 
   const motionDirection =
@@ -1803,6 +1862,8 @@ function FlowPanel({
           motionStillUrl={motionStillUrl}
           priorClipSections={priorClipSections}
           modelHasKey={modelHasKey}
+          stillJob={stillJob}
+          motionJob={motionJob}
           onUpdateStill={(stillId, patch) => updateStill(section.id, stillId, patch)}
           onAddStill={() => addStill(section.id)}
           onRemoveStill={(stillId) => removeStill(section.id, stillId)}
@@ -1815,6 +1876,8 @@ function FlowPanel({
           onSelectVersion={(versionId) => setActiveVersion(section.id, versionId)}
           onGenerateStill={handleGenerateStill}
           onGenerateMotion={handleGenerateMotion}
+          onDismissStillError={dismissStillError}
+          onDismissMotionError={dismissMotionError}
         />
       )}
     </div>
@@ -1923,6 +1986,8 @@ type ClipFlowBodyProps = {
   motionStillUrl: string | null;
   priorClipSections: Section[];
   modelHasKey: (modelId: string) => boolean;
+  stillJob?: GenSlot;
+  motionJob?: GenSlot;
   onUpdateStill: (
     stillId: string,
     patch: Partial<Omit<Section["stills"][number], "id">>,
@@ -1944,6 +2009,8 @@ type ClipFlowBodyProps = {
   onSelectVersion: (versionId: string) => void;
   onGenerateStill: () => void;
   onGenerateMotion: () => void;
+  onDismissStillError: () => void;
+  onDismissMotionError: () => void;
 };
 
 function ClipFlowBody({
@@ -1955,6 +2022,8 @@ function ClipFlowBody({
   motionStillUrl,
   priorClipSections,
   modelHasKey,
+  stillJob,
+  motionJob,
   onUpdateStill,
   onAddStill,
   onRemoveStill,
@@ -1965,6 +2034,8 @@ function ClipFlowBody({
   onSelectVersion,
   onGenerateStill,
   onGenerateMotion,
+  onDismissStillError,
+  onDismissMotionError,
 }: ClipFlowBodyProps) {
   const stillCost = activeStill ? imageModelCost(activeStill.model) : 0;
   const motionCost = activeVersion
@@ -2063,7 +2134,11 @@ function ClipFlowBody({
         </div>
 
         <div className="preview-row">
-          <div className={`preview-box${activeStill?.output_url ? " has-image" : ""}`}>
+          <div
+            className={`preview-box${activeStill?.output_url ? " has-image" : ""}${
+              stillJob?.status === "running" ? " busy" : ""
+            }${stillJob?.status === "error" ? " errored" : ""}`}
+          >
             {activeStill?.output_url ? (
               <img
                 key={activeStill.output_url}
@@ -2076,6 +2151,24 @@ function ClipFlowBody({
               <span className="vbadge">
                 s{section.stills.findIndex((s) => s.id === activeStill.id) + 1} · active
               </span>
+            ) : null}
+            {stillJob?.status === "running" ? (
+              <div className="gen-overlay">
+                <span className="gen-spinner" />
+                <span className="gen-label">Generating still…</span>
+              </div>
+            ) : null}
+            {stillJob?.status === "error" ? (
+              <div className="gen-overlay error">
+                <span className="gen-label">Error: {stillJob.error}</span>
+                <button
+                  type="button"
+                  className="btn ghost gen-dismiss"
+                  onClick={onDismissStillError}
+                >
+                  Dismiss
+                </button>
+              </div>
             ) : null}
             <span className="play">▶︎</span>
             <span className="time">still</span>
@@ -2127,10 +2220,10 @@ function ClipFlowBody({
           <button
             type="button"
             className="btn primary"
-            disabled={!activeStill}
+            disabled={!activeStill || stillJob?.status === "running"}
             onClick={onGenerateStill}
           >
-            ⏵ Generate still
+            {stillJob?.status === "running" ? "● Generating…" : "⏵ Generate still"}
           </button>
         </div>
       </div>
@@ -2211,7 +2304,11 @@ function ClipFlowBody({
         </div>
 
         <div className="preview-row">
-          <div className={`preview-box motion${motionStillUrl ? " has-image" : ""}`}>
+          <div
+            className={`preview-box motion${motionStillUrl ? " has-image" : ""}${
+              motionJob?.status === "running" ? " busy" : ""
+            }${motionJob?.status === "error" ? " errored" : ""}`}
+          >
             {motionStillUrl ? (
               <img
                 key={`${motionStillUrl}|${motionDirection}|${activeVersion?.motion.duration_s ?? 0}`}
@@ -2225,6 +2322,24 @@ function ClipFlowBody({
               <span className="vbadge">
                 v{section.versions.findIndex((v) => v.id === activeVersion.id) + 1} · active
               </span>
+            ) : null}
+            {motionJob?.status === "running" ? (
+              <div className="gen-overlay">
+                <span className="gen-spinner" />
+                <span className="gen-label">Generating motion…</span>
+              </div>
+            ) : null}
+            {motionJob?.status === "error" ? (
+              <div className="gen-overlay error">
+                <span className="gen-label">Error: {motionJob.error}</span>
+                <button
+                  type="button"
+                  className="btn ghost gen-dismiss"
+                  onClick={onDismissMotionError}
+                >
+                  Dismiss
+                </button>
+              </div>
             ) : null}
             <span className="play">▶︎</span>
             <span className="time">
@@ -2278,10 +2393,10 @@ function ClipFlowBody({
           <button
             type="button"
             className="btn primary"
-            disabled={!activeVersion}
+            disabled={!activeVersion || motionJob?.status === "running"}
             onClick={onGenerateMotion}
           >
-            ⏵ Generate motion
+            {motionJob?.status === "running" ? "● Generating…" : "⏵ Generate motion"}
           </button>
         </div>
       </div>
