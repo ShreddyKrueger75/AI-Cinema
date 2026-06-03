@@ -19,6 +19,7 @@ export type Provider = {
   key_prefix?: string;
   docs_url?: string;
   notes?: string;
+  experimental?: boolean;
 };
 
 export const PROVIDERS: Provider[] = [
@@ -57,7 +58,8 @@ export const PROVIDERS: Provider[] = [
     surfaces: ["text", "image"],
     signup_url: "https://platform.openai.com/api-keys",
     key_prefix: "sk-",
-    notes: "Reserved for v2 onboarding scaffold",
+    notes: "v2 — prompt-to-project scaffold",
+    experimental: true,
   },
   {
     id: "anthropic",
@@ -65,7 +67,8 @@ export const PROVIDERS: Provider[] = [
     surfaces: ["text"],
     signup_url: "https://console.anthropic.com/settings/keys",
     key_prefix: "sk-ant-",
-    notes: "Reserved for v2 onboarding scaffold",
+    notes: "v2 — prompt-to-project scaffold",
+    experimental: true,
   },
 ];
 

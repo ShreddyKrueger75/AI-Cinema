@@ -1240,7 +1240,8 @@ textarea.inline-edit { resize: vertical; min-height: 60px; width: 100%; padding:
   text-align: center;
   font-style: italic;
 }
-.popover.look-popover { min-width: 360px; padding: 16px; left: 0; }
+.popover.look-popover { min-width: 360px; padding: 16px; }
+.popover.look-popover.align-right { left: auto; right: 0; }
 .popover.trans-popover { min-width: 220px; padding: 12px; top: calc(100% + 10px); left: -100px; }
 .popover.vo-popover { min-width: 360px; padding: 12px; top: calc(100% + 4px); }
 

@@ -777,11 +777,19 @@ export default function HomePage() {
     ? project.sections.map((s) => `${Math.max(0.1, s.duration_s)}fr`).join(" ")
     : "1fr";
 
-  const handleExport = () => downloadProjectJSON(project);
+  const handleExport = () => {
+    downloadProjectJSON(project);
+    const safe = project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
+    toast.success("Project exported", `${safe}.ai-cinema.json`);
+  };
   const handleImport = async () => {
     const result = await pickProjectJSONFile();
-    if (result.ok) setProject(result.project);
-    else toast.error("Import failed", result.error);
+    if (result.ok) {
+      setProject(result.project);
+      toast.success("Project imported", `${result.project.name} · ${result.project.sections.length} sections`);
+    } else {
+      toast.error("Import failed", result.error);
+    }
   };
 
   return (
@@ -908,7 +916,7 @@ export default function HomePage() {
                 ))}
               </Popover>
             </span>
-            <span>{clipsCount} clips</span>
+            <span>{clipsCount} section{clipsCount === 1 ? "" : "s"}</span>
             <span>v{project.revision} / {project.status}</span>
           </div>
         </div>
@@ -1090,11 +1098,12 @@ export default function HomePage() {
             type="button"
             className={`btn ${playPosition !== null ? "primary" : ""}`}
             onClick={togglePreview}
-            title="Walk through each section for its duration"
+            title="Walk through each section for its duration (Space)"
+            aria-label={playPosition !== null ? "Stop preview playback" : "Play preview playback"}
           >
             {playPosition !== null ? "■ Stop" : "▶ Preview"}
           </button>
-          <button type="button" className="btn primary" onClick={() => setRenderOpen(true)}>▶︎ Render</button>
+          <button type="button" className="btn primary" onClick={() => setRenderOpen(true)} aria-label="Open Render to MP4 dialog">⤓ Render MP4</button>
         </div>
       </div>
 
@@ -3381,7 +3390,11 @@ function FlowPanel({
         <textarea
           className="flow-notes-input"
           rows={2}
-          placeholder="What is this section for? Continuity cues, blocking, the joke..."
+          placeholder={
+            section.type === "title"
+              ? "Why this card? Beat, transition, payoff…"
+              : "Continuity cues, blocking, the joke…"
+          }
           value={section.notes ?? ""}
           onChange={(e) => updateSection(section.id, { notes: e.target.value })}
         />
@@ -3426,6 +3439,7 @@ function FlowPanel({
           onGenerateMotion={handleGenerateMotion}
           onDismissStillError={dismissStillError}
           onDismissMotionError={dismissMotionError}
+          onOpenProviders={onOpenProviders}
         />
       )}
     </div>
@@ -3560,6 +3574,7 @@ type ClipFlowBodyProps = {
   onGenerateMotion: () => void;
   onDismissStillError: () => void;
   onDismissMotionError: () => void;
+  onOpenProviders: () => void;
 };
 
 function ClipFlowBody({
@@ -3586,6 +3601,7 @@ function ClipFlowBody({
   onGenerateMotion,
   onDismissStillError,
   onDismissMotionError,
+  onOpenProviders,
 }: ClipFlowBodyProps) {
   const stillCost = activeStill ? imageModelCost(activeStill.model) : 0;
   const motionCost = activeVersion
@@ -3597,6 +3613,12 @@ function ClipFlowBody({
     activeVersion &&
     !isMotionModelFree(activeVersion.motion.model) &&
     !modelHasKey(activeVersion.motion.model);
+  const stillProviderName = activeStill
+    ? PROVIDERS.find((p) => p.id === providerForModel(activeStill.model))?.name ?? null
+    : null;
+  const motionProviderName = activeVersion
+    ? PROVIDERS.find((p) => p.id === providerForModel(activeVersion.motion.model))?.name ?? null
+    : null;
 
   const updateStillLabel = useCallback(
     (label: string) => activeStill && onUpdateStill(activeStill.id, { label }),
@@ -3785,16 +3807,26 @@ function ClipFlowBody({
 
         <div className="gen-row">
           <span className={`gen-cost ${stillNeedsKey ? "warn" : ""}`}>
-            {stillNeedsKey ? "⊘ key required · " : ""}
-            {formatCost(stillCost)} per still
+            {stillNeedsKey
+              ? `⊘ Needs ${stillProviderName ?? "API"} key`
+              : `${formatCost(stillCost)} per still`}
           </span>
           <button
             type="button"
             className="btn primary"
             disabled={!activeStill || stillJob?.status === "running"}
-            onClick={onGenerateStill}
+            onClick={stillNeedsKey ? onOpenProviders : onGenerateStill}
+            title={
+              stillNeedsKey
+                ? `Open Providers to add a ${stillProviderName ?? "provider"} key`
+                : undefined
+            }
           >
-            {stillJob?.status === "running" ? "● Generating…" : "⏵ Generate still"}
+            {stillJob?.status === "running"
+              ? "● Generating…"
+              : stillNeedsKey
+                ? `🔑 Add ${stillProviderName ?? "provider"} key`
+                : "⏵ Generate still"}
           </button>
         </div>
       </div>
@@ -3970,16 +4002,26 @@ function ClipFlowBody({
 
         <div className="gen-row">
           <span className={`gen-cost ${motionNeedsKey ? "warn" : ""}`}>
-            {motionNeedsKey ? "⊘ key required · " : ""}
-            {formatCost(motionCost)} per version
+            {motionNeedsKey
+              ? `⊘ Needs ${motionProviderName ?? "API"} key`
+              : `${formatCost(motionCost)} per version`}
           </span>
           <button
             type="button"
             className="btn primary"
             disabled={!activeVersion || motionJob?.status === "running"}
-            onClick={onGenerateMotion}
+            onClick={motionNeedsKey ? onOpenProviders : onGenerateMotion}
+            title={
+              motionNeedsKey
+                ? `Open Providers to add a ${motionProviderName ?? "provider"} key`
+                : undefined
+            }
           >
-            {motionJob?.status === "running" ? "● Generating…" : "⏵ Generate motion"}
+            {motionJob?.status === "running"
+              ? "● Generating…"
+              : motionNeedsKey
+                ? `🔑 Add ${motionProviderName ?? "provider"} key`
+                : "⏵ Generate motion"}
           </button>
         </div>
       </div>
@@ -4273,7 +4315,7 @@ function RenderDialog({ project, onClose }: { project: Project; onClose: () => v
                 ? "● Rendering…"
                 : renderUrl
                   ? "↻ Re-render"
-                  : "▶︎ Render MP4"}
+                  : "⤓ Render MP4"}
             </button>
           </div>
         </div>
@@ -4484,6 +4526,9 @@ function ProvidersDialog({
   onRemoveKey: (id: ProviderId) => void;
   onClose: () => void;
 }) {
+  const [showExperimental, setShowExperimental] = useState(false);
+  const stable = PROVIDERS.filter((p) => !p.experimental);
+  const experimental = PROVIDERS.filter((p) => p.experimental);
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -4504,7 +4549,7 @@ function ProvidersDialog({
           </div>
 
           <div className="providers-list">
-            {PROVIDERS.map((p) => {
+            {stable.map((p) => {
               const stored = keys[p.id] ?? "";
               const connected = stored.trim().length > 0;
               return (
@@ -4523,6 +4568,39 @@ function ProvidersDialog({
                 />
               );
             })}
+
+            {experimental.length > 0 ? (
+              <div className="providers-experimental">
+                <button
+                  type="button"
+                  className="providers-experimental-toggle"
+                  onClick={() => setShowExperimental((v) => !v)}
+                >
+                  {showExperimental ? "▾" : "▸"} // COMING IN v2 — {experimental.length} provider{experimental.length === 1 ? "" : "s"}
+                </button>
+                {showExperimental
+                  ? experimental.map((p) => {
+                      const stored = keys[p.id] ?? "";
+                      const connected = stored.trim().length > 0;
+                      return (
+                        <ProviderRow
+                          key={p.id}
+                          providerId={p.id}
+                          name={p.name}
+                          surfaces={p.surfaces}
+                          signupUrl={p.signup_url}
+                          notes={p.notes}
+                          keyPrefix={p.key_prefix}
+                          storedKey={stored}
+                          connected={connected}
+                          onSetKey={(k) => onSetKey(p.id, k)}
+                          onRemoveKey={() => onRemoveKey(p.id)}
+                        />
+                      );
+                    })
+                  : null}
+              </div>
+            ) : null}
           </div>
         </div>
 
