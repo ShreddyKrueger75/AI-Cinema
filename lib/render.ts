@@ -398,8 +398,9 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
       audioFiles.push(name);
       inputs.push("-i", name);
       const delayMs = Math.max(0, Math.round(seg.start_s * 1000));
+      const segDur = Math.max(0.1, seg.duration_s);
       filterParts.push(
-        `[${inputIndex}:a]aresample=44100,adelay=${delayMs}|${delayMs},volume=1.0[vo${i}]`,
+        `[${inputIndex}:a]aresample=44100,atrim=0:${segDur.toFixed(2)},asetpts=PTS-STARTPTS,adelay=${delayMs}|${delayMs},volume=1.0[vo${i}]`,
       );
       mixLabels.push(`[vo${i}]`);
       inputIndex += 1;

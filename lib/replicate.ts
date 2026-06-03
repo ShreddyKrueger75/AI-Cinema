@@ -196,6 +196,77 @@ export async function runReplicateMotion(opts: RunMotionOpts): Promise<string> {
   return extractVideoUrl(pred.output);
 }
 
+export type ReplicateMusicModel = "stable-audio";
+
+const MUSIC_MODEL_SLUGS: Record<ReplicateMusicModel, string> = {
+  "stable-audio": "stackadoc/stable-audio-open-1.0",
+};
+
+export function isReplicateMusicModel(id: string): id is ReplicateMusicModel {
+  return id in MUSIC_MODEL_SLUGS;
+}
+
+export type RunMusicReplicateOpts = {
+  model: ReplicateMusicModel;
+  prompt: string;
+  durationSeconds: number;
+  apiToken: string;
+  signal?: AbortSignal;
+};
+
+function extractAudioUrl(output: unknown): string {
+  if (typeof output === "string") return output;
+  if (Array.isArray(output) && output.length > 0 && typeof output[0] === "string") return output[0];
+  if (output && typeof output === "object") {
+    const o = output as Record<string, unknown>;
+    if (typeof o.url === "string") return o.url;
+    if (typeof o.audio === "string") return o.audio;
+  }
+  throw new Error("Replicate returned an unexpected audio output shape");
+}
+
+export async function runReplicateMusic(opts: RunMusicReplicateOpts): Promise<string> {
+  const slug = MUSIC_MODEL_SLUGS[opts.model];
+  const r = await fetchJSON(`${BASE}/models/${slug}/predictions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${opts.apiToken}`,
+      "Content-Type": "application/json",
+      Prefer: "wait=30",
+    },
+    body: JSON.stringify({
+      input: {
+        prompt: opts.prompt,
+        seconds_total: Math.min(60, Math.max(10, Math.round(opts.durationSeconds))),
+      },
+    }),
+    signal: opts.signal,
+  });
+  let pred = (await r.json()) as Prediction;
+  if (pred.status === "starting" || pred.status === "processing") {
+    pred = await poll(pred.id, opts.apiToken, opts.signal);
+  }
+  if (pred.status !== "succeeded") {
+    throw new Error(pred.error || `Generation ${pred.status}`);
+  }
+  return extractAudioUrl(pred.output);
+}
+
+export async function fetchAsDataUrl(url: string, signal?: AbortSignal): Promise<string> {
+  const r = await fetch(url, { signal });
+  if (!r.ok) throw new Error(`Fetch ${r.status} for ${url}`);
+  const blob = await r.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("FileReader returned non-string"));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("FileReader error"));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export async function runReplicateImage(opts: RunImageOpts): Promise<string> {
   const slug = IMAGE_MODEL_SLUGS[opts.model];
   const input = buildImageInput(opts);

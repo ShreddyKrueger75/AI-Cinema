@@ -42,10 +42,13 @@ import { TEMPLATES } from "@/lib/templates";
 import { useGenState, stillJobKey, motionJobKey, type GenSlot } from "@/lib/genstate";
 import {
   composePromptWithBrief,
+  fetchAsDataUrl,
   isReplicateImageModel,
   isReplicateMotionModel,
+  isReplicateMusicModel,
   runReplicateImage,
   runReplicateMotion,
+  runReplicateMusic,
 } from "@/lib/replicate";
 import { runElevenLabsMusic, runElevenLabsTTS, voiceList } from "@/lib/elevenlabs";
 import { describeRenderPlan, renderProject, type RenderProgress } from "@/lib/render";
@@ -300,33 +303,51 @@ export default function HomePage() {
 
   const handleGenerateMusic = useCallback(async () => {
     const music = project.music_track;
-    const key = providerKeys.elevenlabs;
-    if (!key) {
-      if (
-        confirm("ElevenLabs needs an API key to generate music. Open Providers to add one?")
-      ) {
-        setProvidersOpen(true);
-      }
-      return;
-    }
     if (!music || !music.prompt.trim()) {
       alert("Add a music prompt first.");
       return;
     }
     setMusicJob({ status: "running" });
     try {
-      const dataUrl = await runElevenLabsMusic({
-        prompt: music.prompt,
-        durationMs: Math.round(project.duration_s * 1000),
-        apiKey: key,
-      });
+      let dataUrl: string;
+      if (isReplicateMusicModel(music.model)) {
+        const key = providerKeys.replicate;
+        if (!key) {
+          setMusicJob(null);
+          if (confirm("Stable Audio runs on Replicate. Open Providers to add a key?")) {
+            setProvidersOpen(true);
+          }
+          return;
+        }
+        const url = await runReplicateMusic({
+          model: music.model,
+          prompt: music.prompt,
+          durationSeconds: project.duration_s,
+          apiToken: key,
+        });
+        dataUrl = await fetchAsDataUrl(url);
+      } else {
+        const key = providerKeys.elevenlabs;
+        if (!key) {
+          setMusicJob(null);
+          if (confirm("ElevenLabs needs an API key to generate music. Open Providers to add one?")) {
+            setProvidersOpen(true);
+          }
+          return;
+        }
+        dataUrl = await runElevenLabsMusic({
+          prompt: music.prompt,
+          durationMs: Math.round(project.duration_s * 1000),
+          apiKey: key,
+        });
+      }
       updateMusic({ output_url: dataUrl });
       setMusicJob(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setMusicJob({ status: "error", error: message });
     }
-  }, [project.music_track, project.duration_s, providerKeys.elevenlabs, updateMusic]);
+  }, [project.music_track, project.duration_s, providerKeys.elevenlabs, providerKeys.replicate, updateMusic]);
 
   const handleGenerateVO = useCallback(
     async (segmentId: string) => {
