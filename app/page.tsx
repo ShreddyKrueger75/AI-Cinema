@@ -1311,7 +1311,7 @@ export default function HomePage() {
                   setDragSectionId(null);
                   setDropTarget(null);
                 }}
-                onClick={() => setActiveSection(section.id)}
+                onClickCapture={() => setActiveSection(section.id)}
                 style={
                   isPreviewing ? { animationDuration: `${section.duration_s}s` } : undefined
                 }
@@ -1498,7 +1498,8 @@ export default function HomePage() {
                   <button
                     type="button"
                     className="clip-act"
-                    title="Move left"
+                    title="Move section left"
+                    aria-label="Move section left"
                     disabled={section.index === 1}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1510,7 +1511,8 @@ export default function HomePage() {
                   <button
                     type="button"
                     className="clip-act"
-                    title="Move right"
+                    title="Move section right"
+                    aria-label="Move section right"
                     disabled={section.index === project.sections.length}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1523,6 +1525,7 @@ export default function HomePage() {
                     type="button"
                     className="clip-act"
                     title="Duplicate section"
+                    aria-label="Duplicate section"
                     onClick={(e) => {
                       e.stopPropagation();
                       duplicateSection(section.id);
@@ -1534,6 +1537,7 @@ export default function HomePage() {
                     type="button"
                     className="clip-act remove"
                     title="Remove section"
+                    aria-label="Remove section"
                     onClick={(e) => {
                       e.stopPropagation();
                       removeSection(section.id);
@@ -4289,7 +4293,16 @@ function RenderDialog({ project, onClose }: { project: Project; onClose: () => v
             {planReady
               ? `Plan ready · ${renderPlan.assets.length} segment${renderPlan.assets.length === 1 ? "" : "s"} · ${renderPlan.totalDuration.toFixed(1)}s`
               : renderPlan.issues.length > 0
-                ? `${renderPlan.issues.length} section${renderPlan.issues.length === 1 ? "" : "s"} not renderable yet`
+                ? (() => {
+                    const counts = new Map<string, number>();
+                    for (const i of renderPlan.issues) {
+                      counts.set(i.reason, (counts.get(i.reason) ?? 0) + 1);
+                    }
+                    const parts = Array.from(counts.entries()).map(
+                      ([reason, n]) => `${n} ${reason}`,
+                    );
+                    return `${renderPlan.issues.length} section${renderPlan.issues.length === 1 ? "" : "s"} not renderable yet — ${parts.join(" · ")}`;
+                  })()
                 : "No assets to render"}
           </span>
           <div style={{ display: "flex", gap: 10 }}>

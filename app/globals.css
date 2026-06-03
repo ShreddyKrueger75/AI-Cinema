@@ -7,9 +7,9 @@
   --color-line:         #2a2724;
   --color-line-strong:  #3a3631;
   --color-fg:           #f4f1ea;
-  --color-fg-muted:     #b5afa5;
-  --color-fg-faint:     #756f65;
-  --color-fg-ghost:     #443f38;
+  --color-fg-muted:     #c4beb3;
+  --color-fg-faint:     #8d8780;
+  --color-fg-ghost:     #4a443d;
   --color-blood:        #ff4d7e;
   --color-blood-soft:   rgba(255, 77, 126, 0.14);
   --color-blood-faint:  rgba(255, 77, 126, 0.32);
@@ -1413,27 +1413,36 @@ textarea.inline-edit { resize: vertical; min-height: 60px; width: 100%; padding:
 .clip.drop-after::before { right: -2px; }
 .clip-actions {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  bottom: 6px;
+  right: 6px;
   display: flex;
-  gap: 2px;
+  gap: 3px;
   opacity: 0;
+  background: rgba(10, 9, 8, 0.84);
+  border: 1px solid var(--color-line-strong);
+  padding: 3px;
   transition: opacity .15s;
+  z-index: 3;
 }
-.clip:hover .clip-actions { opacity: 1; }
+.clip:hover .clip-actions,
+.clip.active .clip-actions { opacity: 1; }
 .clip-act {
-  font-size: 10px;
-  color: var(--color-fg-faint);
+  font-size: 11px;
+  color: var(--color-fg-muted);
   background: var(--color-bg);
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-line-strong);
   cursor: pointer;
-  padding: 2px 6px;
+  padding: 4px 8px;
   letter-spacing: 0.04em;
   transition: color .15s, border-color .15s;
 }
 .clip-act:hover:not(:disabled) { color: var(--color-blood); border-color: var(--color-blood-faint); }
 .clip-act:disabled { opacity: 0.3; cursor: not-allowed; }
 .clip-act.remove:hover { color: var(--color-blood); border-color: var(--color-blood); }
+@media (max-width: 840px) {
+  .clip-actions { opacity: 1; gap: 4px; }
+  .clip-act { min-width: 36px; min-height: 32px; padding: 6px 10px; font-size: 13px; }
+}
 
 .clip-resize-handle {
   position: absolute;
@@ -2190,7 +2199,7 @@ button.trans-marker {
     gap: 14px;
   }
   .project-actions { flex-wrap: wrap; gap: 6px; }
-  .project-actions .btn { padding: 8px 12px; font-size: 10px; letter-spacing: 0.14em; }
+  .project-actions .btn { padding: 10px 12px; font-size: 11px; letter-spacing: 0.14em; min-height: 36px; }
   .project-meta h1 { font-size: 18px; }
   .specs { font-size: 10px; }
   .lookbar { grid-template-columns: repeat(2, 1fr); }
