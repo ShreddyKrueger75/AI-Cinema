@@ -36,6 +36,7 @@ export type StoreState = {
   addTitleSection: (afterSectionId?: string | null) => void;
   removeSection: (sectionId: string) => void;
   moveSection: (sectionId: string, direction: -1 | 1) => void;
+  moveSectionTo: (sectionId: string, targetSectionId: string, position: "before" | "after") => void;
   duplicateSection: (sectionId: string) => void;
 
   updateStill: (sectionId: string, stillId: string, patch: Partial<Omit<Still, "id">>) => void;
@@ -271,6 +272,22 @@ export const useStore = create<StoreState>()(
           const j = i + direction;
           if (i < 0 || j < 0 || j >= sections.length) return state;
           [sections[i], sections[j]] = [sections[j], sections[i]];
+          let next = reindexAndRetotal({ ...state.project, sections });
+          next = reconcileTransitions(next);
+          return { project: touch(next) };
+        }),
+
+      moveSectionTo: (sectionId, targetSectionId, position) =>
+        set((state) => {
+          if (sectionId === targetSectionId) return state;
+          const sections = [...state.project.sections];
+          const fromIdx = sections.findIndex((s) => s.id === sectionId);
+          if (fromIdx < 0) return state;
+          const [moved] = sections.splice(fromIdx, 1);
+          let toIdx = sections.findIndex((s) => s.id === targetSectionId);
+          if (toIdx < 0) return state;
+          if (position === "after") toIdx += 1;
+          sections.splice(toIdx, 0, moved);
           let next = reindexAndRetotal({ ...state.project, sections });
           next = reconcileTransitions(next);
           return { project: touch(next) };

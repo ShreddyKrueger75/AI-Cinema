@@ -896,7 +896,25 @@ textarea.inline-edit { resize: vertical; min-height: 60px; width: 100%; padding:
 }
 .timeline-add:hover { color: var(--color-blood); border-color: var(--color-blood-faint); }
 
-.clip { position: relative; }
+.clip {
+  position: relative;
+  user-select: none;
+}
+.clip[draggable="true"] { cursor: grab; }
+.clip.dragging { opacity: 0.4; cursor: grabbing; }
+.clip.drop-before::before,
+.clip.drop-after::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 3px;
+  background: var(--color-blood);
+  z-index: 4;
+  box-shadow: 0 0 8px var(--color-blood);
+}
+.clip.drop-before::before { left: -2px; }
+.clip.drop-after::before { right: -2px; }
 .clip-actions {
   position: absolute;
   top: 4px;

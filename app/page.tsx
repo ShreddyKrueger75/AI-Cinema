@@ -249,6 +249,7 @@ export default function HomePage() {
   const addTitleSection = useStore((s) => s.addTitleSection);
   const removeSection = useStore((s) => s.removeSection);
   const moveSection = useStore((s) => s.moveSection);
+  const moveSectionTo = useStore((s) => s.moveSectionTo);
   const duplicateSection = useStore((s) => s.duplicateSection);
   const resetProject = useStore((s) => s.resetProject);
   const updateTransition = useStore((s) => s.updateTransition);
@@ -373,6 +374,8 @@ export default function HomePage() {
   const [editingTransitionId, setEditingTransitionId] = useState<string | null>(null);
   const [editingVOId, setEditingVOId] = useState<string | null>(null);
   const [lookOpen, setLookOpen] = useState<null | "brief" | "grade" | "music" | "title">(null);
+  const [dragSectionId, setDragSectionId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; side: "before" | "after" } | null>(null);
   const [renderOpen, setRenderOpen] = useState(false);
   const [providersOpen, setProvidersOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -912,7 +915,43 @@ export default function HomePage() {
             return (
               <div
                 key={section.id}
-                className={`clip${isActive ? " active" : ""}${empty ? " empty" : ""}${isPreviewing ? " previewing" : ""}`}
+                className={`clip${isActive ? " active" : ""}${empty ? " empty" : ""}${isPreviewing ? " previewing" : ""}${
+                  dragSectionId === section.id ? " dragging" : ""
+                }${dropTarget?.id === section.id ? ` drop-${dropTarget.side}` : ""}`}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/x-ai-cinema-section", section.id);
+                  setDragSectionId(section.id);
+                }}
+                onDragEnd={() => {
+                  setDragSectionId(null);
+                  setDropTarget(null);
+                }}
+                onDragOver={(e) => {
+                  if (!dragSectionId || dragSectionId === section.id) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const midX = rect.left + rect.width / 2;
+                  const side: "before" | "after" = e.clientX < midX ? "before" : "after";
+                  if (dropTarget?.id !== section.id || dropTarget.side !== side) {
+                    setDropTarget({ id: section.id, side });
+                  }
+                }}
+                onDragLeave={(e) => {
+                  if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                  if (dropTarget?.id === section.id) setDropTarget(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const draggedId = e.dataTransfer.getData("text/x-ai-cinema-section");
+                  if (draggedId && draggedId !== section.id && dropTarget) {
+                    moveSectionTo(draggedId, section.id, dropTarget.side);
+                  }
+                  setDragSectionId(null);
+                  setDropTarget(null);
+                }}
                 onClick={() => setActiveSection(section.id)}
                 style={
                   isPreviewing ? { animationDuration: `${section.duration_s}s` } : undefined
