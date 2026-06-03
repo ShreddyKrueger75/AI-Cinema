@@ -443,7 +443,39 @@ button {
   from { transform: scaleX(0); }
   to   { transform: scaleX(1); }
 }
-.clip-num { font-size: 9px; letter-spacing: 0.24em; color: var(--color-fg-faint); margin-bottom: 8px; }
+.clip-num {
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  color: var(--color-fg-faint);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.clip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-fg-faint);
+  display: inline-block;
+}
+.clip-dot-ready { background: var(--color-ok); box-shadow: 0 0 6px var(--color-ok); }
+.clip-dot-still { background: var(--color-warn); }
+.clip-dot-draft { background: var(--color-fg-faint); }
+.clip-dot-missing { background: var(--color-line-strong); }
+
+.save-pill {
+  font-size: 8px;
+  letter-spacing: 0.22em;
+  padding: 2px 8px;
+  margin-left: 12px;
+  border: 1px solid var(--color-line);
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+.save-pill.saved { color: var(--color-ok); border-color: var(--color-ok); }
+.save-pill.dirty { color: var(--color-warn); border-color: var(--color-warn); }
+.save-pill.new { color: var(--color-blood); border-color: var(--color-blood-faint); }
 
 .clip-thumb {
   position: relative;

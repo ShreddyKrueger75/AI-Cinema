@@ -337,6 +337,10 @@ export default function HomePage() {
   }, [project, setProject]);
 
   const projectStubs = useProjectLibrary((s) => s.order.map((id) => s.projects[id]).filter(Boolean));
+  const savedProjectsMap = useProjectLibrary((s) => s.projects);
+  const savedSnapshot = savedProjectsMap[project.id];
+  const isDirty = !savedSnapshot || savedSnapshot.updated_at !== project.updated_at;
+  const isInLibrary = !!savedSnapshot;
   const saveProjectToLibrary = useProjectLibrary((s) => s.saveProject);
   const loadProjectFromLibrary = useProjectLibrary((s) => s.loadProject);
   const renameProjectInLibrary = useProjectLibrary((s) => s.renameProject);
@@ -514,6 +518,12 @@ export default function HomePage() {
         handleRedo();
         return;
       }
+      if (mod && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        saveProjectToLibrary(project);
+        toast.success("Saved to library", project.name);
+        return;
+      }
       if (editable) return;
 
       if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
@@ -584,6 +594,8 @@ export default function HomePage() {
     stopPreview,
     removeSection,
     duplicateSection,
+    project,
+    saveProjectToLibrary,
   ]);
 
   const handleReset = useCallback(() => {
@@ -654,6 +666,22 @@ export default function HomePage() {
               ariaLabel="Project name"
               placeholder="Untitled project"
             />
+            {isInLibrary ? (
+              <span
+                className={`save-pill ${isDirty ? "dirty" : "saved"}`}
+                title={
+                  isDirty
+                    ? "Unsaved changes since last library snapshot"
+                    : "In sync with the library snapshot"
+                }
+              >
+                {isDirty ? "● UNSAVED" : "✓ SAVED"}
+              </span>
+            ) : (
+              <span className="save-pill new" title="Not in your project library yet">
+                NEW
+              </span>
+            )}
           </h1>
           <div className="specs">
             <span>{project.duration_s.toFixed(1)}s</span>
@@ -1001,6 +1029,19 @@ export default function HomePage() {
             const empty = versionIdx < 0;
             const versionLabel = empty ? "— not yet" : `v${versionIdx + 1} ▾`;
             const trans = transitionsByTo.get(section.id);
+            const activeVer = section.versions.find((v) => v.id === section.active_version_id);
+            const readyKind: "ready" | "still" | "draft" | "missing" = (() => {
+              if (section.type === "title") {
+                return activeVer && activeVer.kind === "title" && activeVer.text.trim().length > 0
+                  ? "ready"
+                  : "missing";
+              }
+              if (activeVer && activeVer.kind === "clip" && activeVer.output_url) return "ready";
+              const stillId = activeVer && activeVer.kind === "clip" ? activeVer.still_ref ?? section.active_still_id : section.active_still_id;
+              const still = stillId ? section.stills.find((s) => s.id === stillId) : null;
+              if (still?.output_url) return "still";
+              return empty ? "missing" : "draft";
+            })();
             return (
               <div
                 key={section.id}
@@ -1079,6 +1120,12 @@ export default function HomePage() {
                   </span>
                 ) : null}
                 <div className="clip-num">
+                  <span className={`clip-dot clip-dot-${readyKind}`} title={
+                    readyKind === "ready" ? "Motion rendered" :
+                    readyKind === "still" ? "Still ready, motion pending" :
+                    readyKind === "draft" ? "Draft — nothing generated" :
+                    "Missing"
+                  } />
                   {section.index.toString().padStart(2, "0")} // {section.type.toUpperCase()}
                 </div>
                 {(() => {
@@ -3665,6 +3712,7 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
       items: [
         { keys: [`${mod} Z`], label: "Undo" },
         { keys: [`⇧ ${mod} Z`, `${mod} Y`], label: "Redo" },
+        { keys: [`${mod} S`], label: "Save snapshot to library" },
         { keys: ["D"], label: "Duplicate active section" },
         { keys: ["Del", "⌫"], label: "Remove active section" },
       ],
