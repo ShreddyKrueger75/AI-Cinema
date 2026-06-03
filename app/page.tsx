@@ -241,6 +241,7 @@ export default function HomePage() {
   const setActiveSection = useStore((s) => s.setActiveSection);
   const setProject = useStore((s) => s.setProject);
   const updateProjectMeta = useStore((s) => s.updateProjectMeta);
+  const setActiveVersionStore = useStore((s) => s.setActiveVersion);
   const addClipSection = useStore((s) => s.addClipSection);
   const addTitleSection = useStore((s) => s.addTitleSection);
   const removeSection = useStore((s) => s.removeSection);
@@ -285,6 +286,7 @@ export default function HomePage() {
   const [aspectMenuOpen, setAspectMenuOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [insertAfterId, setInsertAfterId] = useState<string | null>(null);
+  const [timelineVersionMenuId, setTimelineVersionMenuId] = useState<string | null>(null);
   const [editingTransitionId, setEditingTransitionId] = useState<string | null>(null);
   const [editingVOId, setEditingVOId] = useState<string | null>(null);
   const [lookOpen, setLookOpen] = useState<null | "brief" | "grade" | "music" | "title">(null);
@@ -744,7 +746,44 @@ export default function HomePage() {
                 </div>
                 <div className="clip-title">{section.title}</div>
                 <div className="clip-meta">
-                  <span className="clip-version">{versionLabel}</span>
+                  {empty ? (
+                    <span className="clip-version">{versionLabel}</span>
+                  ) : (
+                    <span className="popover-anchor">
+                      <button
+                        type="button"
+                        className="clip-version"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTimelineVersionMenuId(
+                            timelineVersionMenuId === section.id ? null : section.id,
+                          );
+                        }}
+                      >
+                        {versionLabel}
+                      </button>
+                      <Popover
+                        open={timelineVersionMenuId === section.id}
+                        onClose={() => setTimelineVersionMenuId(null)}
+                        className="menu wide"
+                      >
+                        {section.versions.map((v, vi) => (
+                          <button
+                            key={v.id}
+                            type="button"
+                            className={`menu-item ${v.id === section.active_version_id ? "active" : ""}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveVersionStore(section.id, v.id);
+                              setTimelineVersionMenuId(null);
+                            }}
+                          >
+                            <span className="mi-tag">v{vi + 1}</span> {v.label}
+                          </button>
+                        ))}
+                      </Popover>
+                    </span>
+                  )}
                   <span className="clip-dur">{section.duration_s.toFixed(1)}s</span>
                 </div>
                 <span className="popover-anchor clip-insert">
@@ -2468,7 +2507,6 @@ function ClipFlowBody({
                 </button>
               </div>
             ) : null}
-            <span className="play">▶︎</span>
             <span className="time">still</span>
           </div>
           <div className="versions-list">
@@ -2616,6 +2654,7 @@ function ClipFlowBody({
                 loop
                 muted
                 playsInline
+                controls
               />
             ) : motionStillUrl ? (
               <img
@@ -2649,10 +2688,11 @@ function ClipFlowBody({
                 </button>
               </div>
             ) : null}
-            <span className="play">▶︎</span>
-            <span className="time">
-              0:00 / {(activeVersion?.motion.duration_s ?? section.duration_s).toFixed(1)}
-            </span>
+            {motionVideoUrl ? null : (
+              <span className="time">
+                0:00 / {(activeVersion?.motion.duration_s ?? section.duration_s).toFixed(1)}
+              </span>
+            )}
           </div>
           <div className="versions-list">
             {section.versions.map((v, i) => {

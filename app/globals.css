@@ -257,6 +257,17 @@ button {
   letter-spacing: 0.06em;
 }
 .clip-version { color: var(--color-blood); }
+button.clip-version {
+  font: inherit;
+  letter-spacing: inherit;
+  background: transparent;
+  border: none;
+  padding: 1px 3px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: border-color .12s;
+}
+button.clip-version:hover { border-color: var(--color-blood-faint); }
 .clip.empty .clip-version { color: var(--color-fg-faint); }
 .clip-dur { color: var(--color-fg-faint); }
 
