@@ -137,14 +137,24 @@ export function describeRenderPlan(project: Project): {
     if (a.kind === "missing") {
       const sec = project.sections.find((s) => s.id === a.sectionId);
       if (!sec) continue;
+      let reason: string;
+      if (sec.type === "title") {
+        reason = "empty title text";
+      } else {
+        const active = sec.versions.find((v) => v.id === sec.active_version_id);
+        if (!active || active.kind !== "clip") {
+          reason = "no active version";
+        } else if (sec.stills.length === 0 || !sec.active_still_id) {
+          reason = "no still added";
+        } else {
+          reason = "motion not generated";
+        }
+      }
       issues.push({
         sectionId: sec.id,
         index: sec.index,
         title: sec.title,
-        reason:
-          sec.type === "clip"
-            ? "no rendered video and no still"
-            : "title text is empty",
+        reason,
       });
     }
   }

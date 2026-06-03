@@ -2,7 +2,16 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { verifyUser, isKvConfigured } from "@/lib/users";
 
+// Auth.js refuses to start without AUTH_SECRET. On preview deploys where the
+// dashboard env var isn't set yet, fall back to a per-commit deterministic
+// secret so /api/auth/session returns 200 + an empty body instead of 500ing
+// 16× per page load. Production must set a real AUTH_SECRET (see issue #3).
+const AUTH_SECRET =
+  process.env.AUTH_SECRET ||
+  `ai-cinema-preview-fallback-${process.env.VERCEL_GIT_COMMIT_SHA ?? "local"}-do-not-use-in-prod`;
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  secret: AUTH_SECRET,
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers: [

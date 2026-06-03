@@ -1443,6 +1443,12 @@ textarea.inline-edit { resize: vertical; min-height: 60px; width: 100%; padding:
   .clip-actions { opacity: 1; gap: 4px; }
   .clip-act { min-width: 36px; min-height: 32px; padding: 6px 10px; font-size: 13px; }
 }
+@media (max-width: 600px) {
+  .clip-actions { gap: 6px; padding: 5px; }
+  .clip-act { min-width: 44px; min-height: 36px; padding: 8px 12px; font-size: 14px; }
+  .clip-insert-btn { width: 28px; height: 28px; font-size: 16px; opacity: 1; }
+  button.trans-marker { width: 22px; height: 22px; font-size: 11px; }
+}
 
 .clip-resize-handle {
   position: absolute;
@@ -1607,6 +1613,21 @@ button.trans-marker {
 .status-link:hover { color: var(--color-blood); }
 
 .gen-cost.warn { color: var(--color-warn); }
+button.gen-cost-link {
+  background: transparent;
+  border: 1px dashed var(--color-warn);
+  font: inherit;
+  letter-spacing: 0.16em;
+  color: var(--color-warn);
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+button.gen-cost-link:hover {
+  background: rgba(252, 187, 0, 0.08);
+  border-color: var(--color-warn);
+  color: var(--color-fg);
+}
 
 .ref-hint {
   font-size: 10px;

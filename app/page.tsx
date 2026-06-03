@@ -2219,11 +2219,20 @@ function ConfirmViewport() {
   const resolve = useConfirm((s) => s.resolve);
   const cancel = useConfirm((s) => s.cancel);
   if (!prompt) return null;
+  const titleId = `confirm-title-${prompt.id}`;
+  const messageId = `confirm-message-${prompt.id}`;
   return (
-    <div className="modal-overlay" onClick={cancel} role="alertdialog" aria-modal>
+    <div
+      className="modal-overlay"
+      onClick={cancel}
+      role="alertdialog"
+      aria-modal
+      aria-labelledby={titleId}
+      aria-describedby={messageId}
+    >
       <div className="confirm-card" onClick={(e) => e.stopPropagation()}>
-        <div className="confirm-title">{prompt.title}</div>
-        <div className="confirm-message">{prompt.message}</div>
+        <div className="confirm-title" id={titleId}>{prompt.title}</div>
+        <div className="confirm-message" id={messageId}>{prompt.message}</div>
         <div className="confirm-actions">
           <button type="button" className="btn ghost" onClick={cancel}>
             {prompt.cancel_label}
@@ -2232,6 +2241,7 @@ function ConfirmViewport() {
             type="button"
             className={`btn ${prompt.destructive ? "danger" : "primary"}`}
             onClick={() => { resolve(); }}
+            autoFocus
           >
             {prompt.confirm_label}
           </button>
@@ -3847,26 +3857,53 @@ function ClipFlowBody({
         </div>
 
         <div className="gen-row">
-          <span className={`gen-cost ${stillNeedsKey ? "warn" : ""}`}>
-            {stillNeedsKey
-              ? `⊘ Needs ${stillProviderName ?? "API"} key`
-              : `${formatCost(stillCost)} per still`}
-          </span>
+          {stillNeedsKey ? (
+            <button
+              type="button"
+              className="gen-cost warn gen-cost-link"
+              onClick={onOpenProviders}
+              title={`Open Providers to add a ${stillProviderName ?? "provider"} key`}
+              aria-label={`Open Providers to add a ${stillProviderName ?? "provider"} key`}
+            >
+              ⊘ Needs {stillProviderName ?? "API"} key →
+            </button>
+          ) : (
+            <span className="gen-cost">{formatCost(stillCost)} per still</span>
+          )}
           <button
             type="button"
             className="btn primary"
-            disabled={!activeStill || stillJob?.status === "running"}
-            onClick={stillNeedsKey ? onOpenProviders : onGenerateStill}
+            disabled={stillJob?.status === "running"}
+            onClick={
+              stillJob?.status === "running"
+                ? undefined
+                : !activeStill
+                  ? onAddStill
+                  : stillNeedsKey
+                    ? onOpenProviders
+                    : onGenerateStill
+            }
             title={
-              stillNeedsKey
-                ? `Open Providers to add a ${stillProviderName ?? "provider"} key`
-                : undefined
+              !activeStill
+                ? "Add a still to start"
+                : stillNeedsKey
+                  ? `Open Providers to add a ${stillProviderName ?? "provider"} key`
+                  : undefined
+            }
+            aria-label={
+              !activeStill
+                ? "Add a new still"
+                : stillNeedsKey
+                  ? `Open Providers to add a ${stillProviderName ?? "provider"} key`
+                  : "Generate still"
             }
           >
             {stillJob?.status === "running"
               ? "● Generating…"
-              : stillNeedsKey
-                ? `🔑 Add ${stillProviderName ?? "provider"} key`
+              : !activeStill
+                ? "+ Add still first"
+                : stillNeedsKey
+                  ? `🔑 Add ${stillProviderName ?? "provider"} key`
                 : "⏵ Generate still"}
           </button>
         </div>
@@ -4042,11 +4079,19 @@ function ClipFlowBody({
         </div>
 
         <div className="gen-row">
-          <span className={`gen-cost ${motionNeedsKey ? "warn" : ""}`}>
-            {motionNeedsKey
-              ? `⊘ Needs ${motionProviderName ?? "API"} key`
-              : `${formatCost(motionCost)} per version`}
-          </span>
+          {motionNeedsKey ? (
+            <button
+              type="button"
+              className="gen-cost warn gen-cost-link"
+              onClick={onOpenProviders}
+              title={`Open Providers to add a ${motionProviderName ?? "provider"} key`}
+              aria-label={`Open Providers to add a ${motionProviderName ?? "provider"} key`}
+            >
+              ⊘ Needs {motionProviderName ?? "API"} key →
+            </button>
+          ) : (
+            <span className="gen-cost">{formatCost(motionCost)} per version</span>
+          )}
           <button
             type="button"
             className="btn primary"

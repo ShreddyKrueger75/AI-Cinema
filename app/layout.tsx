@@ -33,7 +33,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${jetbrainsMono.variable} ${inter.variable} ${knewave.variable}`}>
       <body>
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider refetchInterval={0} refetchOnWindowFocus={false}>
+          {children}
+        </SessionProvider>
       </body>
     </html>
   );
