@@ -2124,6 +2124,42 @@ button.trans-marker {
 }
 .shortcut-label { color: var(--color-fg-muted); }
 
+/* ───────────── CONFIRM DIALOG ───────────── */
+.confirm-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-strong);
+  max-width: 460px;
+  width: 100%;
+  padding: 24px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.85);
+  animation: modal-in .14s ease-out;
+}
+.confirm-title {
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--color-fg);
+}
+.confirm-message {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-fg-muted);
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.btn.danger {
+  background: var(--color-blood);
+  color: var(--color-bg);
+  border-color: var(--color-blood);
+}
+.btn.danger:hover { background: #ff6691; color: var(--color-bg); }
+
 /* ───────────── TOASTS ───────────── */
 .toast-viewport {
   position: fixed;

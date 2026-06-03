@@ -42,6 +42,7 @@ import { TEMPLATES } from "@/lib/templates";
 import { useProjectLibrary } from "@/lib/projects";
 import { useHistory } from "@/lib/history";
 import { toast, useToasts } from "@/lib/toast";
+import { confirmAsk, useConfirm } from "@/lib/confirm";
 import { useWaveform } from "@/lib/waveform";
 import { signOut, useSession } from "next-auth/react";
 import { useGenState, stillJobKey, motionJobKey, type GenSlot } from "@/lib/genstate";
@@ -686,6 +687,7 @@ export default function HomePage() {
         return;
       }
       if (e.key === "Escape") {
+        if (useConfirm.getState().prompt) { useConfirm.getState().cancel(); return; }
         if (paletteOpen) { setPaletteOpen(false); return; }
         if (helpOpen) { setHelpOpen(false); return; }
         if (renderOpen) { setRenderOpen(false); return; }
@@ -754,10 +756,17 @@ export default function HomePage() {
   ]);
 
   const handleReset = useCallback(() => {
-    if (confirm("Reset project to defaults? Unsaved work will be lost.")) {
-      resetProject();
-      toast.info("Project reset", "Back to the Product Reveal seed.");
-    }
+    confirmAsk({
+      title: "Reset project?",
+      message: "This wipes the current timeline back to the Product Reveal seed. Anything not saved to the project library will be lost.",
+      confirm_label: "↺ Reset",
+      cancel_label: "Keep editing",
+      destructive: true,
+      onConfirm: () => {
+        resetProject();
+        toast.info("Project reset", "Back to the Product Reveal seed.");
+      },
+    });
   }, [resetProject]);
   const handleExportLUT = useCallback(() => {
     if (!project.grade) return;
@@ -1783,6 +1792,7 @@ export default function HomePage() {
       </div>
 
       <ToastViewport />
+      <ConfirmViewport />
     </>
   );
 }
@@ -2203,6 +2213,33 @@ function TitleCardLive({
 }
 
 /* ───────────── TOAST VIEWPORT ───────────── */
+
+function ConfirmViewport() {
+  const prompt = useConfirm((s) => s.prompt);
+  const resolve = useConfirm((s) => s.resolve);
+  const cancel = useConfirm((s) => s.cancel);
+  if (!prompt) return null;
+  return (
+    <div className="modal-overlay" onClick={cancel} role="alertdialog" aria-modal>
+      <div className="confirm-card" onClick={(e) => e.stopPropagation()}>
+        <div className="confirm-title">{prompt.title}</div>
+        <div className="confirm-message">{prompt.message}</div>
+        <div className="confirm-actions">
+          <button type="button" className="btn ghost" onClick={cancel}>
+            {prompt.cancel_label}
+          </button>
+          <button
+            type="button"
+            className={`btn ${prompt.destructive ? "danger" : "primary"}`}
+            onClick={() => { resolve(); }}
+          >
+            {prompt.confirm_label}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function UserStatusChip() {
   const { data: session, status } = useSession();
