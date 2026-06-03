@@ -61,6 +61,41 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+export type RunMusicOpts = {
+  prompt: string;
+  durationMs: number;
+  apiKey: string;
+  signal?: AbortSignal;
+};
+
+export async function runElevenLabsMusic(opts: RunMusicOpts): Promise<string> {
+  const clampedMs = Math.min(60_000, Math.max(10_000, Math.round(opts.durationMs)));
+  const r = await fetch(`${BASE}/music/compose?output_format=mp3_44100_128`, {
+    method: "POST",
+    headers: {
+      "xi-api-key": opts.apiKey,
+      "Content-Type": "application/json",
+      Accept: "audio/mpeg",
+    },
+    body: JSON.stringify({
+      prompt: opts.prompt,
+      music_length_ms: clampedMs,
+    }),
+    signal: opts.signal,
+  });
+  if (!r.ok) {
+    let body = "";
+    try {
+      body = await r.text();
+    } catch {
+      body = r.statusText;
+    }
+    throw new Error(`ElevenLabs Music ${r.status}: ${body.slice(0, 300)}`);
+  }
+  const blob = await r.blob();
+  return blobToDataUrl(blob);
+}
+
 export async function runElevenLabsTTS(opts: RunVoiceOpts): Promise<string> {
   const voiceId = resolveVoiceId(opts.voice);
   const r = await fetch(`${BASE}/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {

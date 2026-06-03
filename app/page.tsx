@@ -47,7 +47,7 @@ import {
   runReplicateImage,
   runReplicateMotion,
 } from "@/lib/replicate";
-import { runElevenLabsTTS, voiceList } from "@/lib/elevenlabs";
+import { runElevenLabsMusic, runElevenLabsTTS, voiceList } from "@/lib/elevenlabs";
 
 const ASPECT_OPTIONS: Aspect[] = ["9:16", "16:9", "1:1"];
 
@@ -294,6 +294,37 @@ export default function HomePage() {
   }, []);
 
   const [voJobs, setVoJobs] = useState<Record<string, { status: "running" | "error"; error?: string }>>({});
+  const [musicJob, setMusicJob] = useState<{ status: "running" | "error"; error?: string } | null>(null);
+
+  const handleGenerateMusic = useCallback(async () => {
+    const music = project.music_track;
+    const key = providerKeys.elevenlabs;
+    if (!key) {
+      if (
+        confirm("ElevenLabs needs an API key to generate music. Open Providers to add one?")
+      ) {
+        setProvidersOpen(true);
+      }
+      return;
+    }
+    if (!music || !music.prompt.trim()) {
+      alert("Add a music prompt first.");
+      return;
+    }
+    setMusicJob({ status: "running" });
+    try {
+      const dataUrl = await runElevenLabsMusic({
+        prompt: music.prompt,
+        durationMs: Math.round(project.duration_s * 1000),
+        apiKey: key,
+      });
+      updateMusic({ output_url: dataUrl });
+      setMusicJob(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setMusicJob({ status: "error", error: message });
+    }
+  }, [project.music_track, project.duration_s, providerKeys.elevenlabs, updateMusic]);
 
   const handleGenerateVO = useCallback(
     async (segmentId: string) => {
@@ -571,6 +602,9 @@ export default function HomePage() {
           <MusicEditor
             music={project.music_track}
             library={libraryMusic}
+            job={musicJob ?? undefined}
+            hasKey={!!providerKeys.elevenlabs}
+            durationS={project.duration_s}
             onChange={updateMusic}
             onLoadPreset={(item) => {
               const { id: _drop, ...rest } = item;
@@ -579,6 +613,8 @@ export default function HomePage() {
             onSaveAs={(name) => project.music_track && saveMusicToLibrary(project.music_track, name)}
             onRemovePreset={(id) => removeLibraryItem("music", id)}
             onRenamePreset={(id, name) => renameLibraryItem("music", id, name)}
+            onGenerate={handleGenerateMusic}
+            onDismissError={() => setMusicJob(null)}
             onClose={() => setLookOpen(null)}
           />
         </LookSlot>
@@ -880,17 +916,22 @@ export default function HomePage() {
 
         <div className="audio-row" style={{ marginTop: 8 }}>
           <div className="track-label">MUSIC</div>
-          <button
-            type="button"
-            className="music-bed"
-            onClick={() => setLookOpen("music")}
-          >
-            <span>
-              <strong>{project.music_track?.name ?? "—"}</strong> ·{" "}
-              {project.music_track?.model ?? "—"} · v1 · {project.duration_s.toFixed(1)}s · auto-ducks under VO −6dB
-            </span>
-            <span>♪ ▾</span>
-          </button>
+          <div className={`music-bed ${project.music_track?.output_url ? "voiced" : ""}`}>
+            <button
+              type="button"
+              className="music-bed-main"
+              onClick={() => setLookOpen("music")}
+            >
+              <span>
+                <strong>{project.music_track?.name ?? "—"}</strong> ·{" "}
+                {project.music_track?.model ?? "—"} · v1 · {project.duration_s.toFixed(1)}s · auto-ducks under VO −6dB
+              </span>
+              <span>{project.music_track?.output_url ? "♪ ✓" : "♪"} ▾</span>
+            </button>
+            {project.music_track?.output_url ? (
+              <audio src={project.music_track.output_url} controls className="music-bed-audio" />
+            ) : null}
+          </div>
         </div>
 
         <div className="audio-row" style={{ marginTop: 12 }}>
@@ -1368,15 +1409,25 @@ function GradeEditor({
 function MusicEditor({
   music,
   library,
+  job,
+  hasKey,
+  durationS,
   onChange,
   onLoadPreset,
   onSaveAs,
   onRemovePreset,
   onRenamePreset,
+  onGenerate,
+  onDismissError,
   onClose,
 }: {
   music: Project["music_track"];
+  job?: { status: "running" | "error"; error?: string };
+  hasKey: boolean;
+  durationS: number;
   onChange: (patch: Partial<NonNullable<Project["music_track"]>>) => void;
+  onGenerate: () => void;
+  onDismissError: () => void;
   onClose: () => void;
 } & LibraryEditorProps<NonNullable<Project["music_track"]>>) {
   return (
@@ -1422,6 +1473,34 @@ function MusicEditor({
           placeholder="slow cinematic build, low piano, distant strings, no drums"
         />
       </Field>
+      {music?.output_url ? (
+        <Field label="Preview">
+          <audio src={music.output_url} controls className="vo-audio" />
+        </Field>
+      ) : null}
+      {job?.status === "error" ? (
+        <div className="vo-error">
+          <span>Error: {job.error}</span>
+          <button type="button" className="btn ghost vo-error-dismiss" onClick={onDismissError}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+      <div className="gen-row">
+        <span className={`gen-cost ${!hasKey ? "warn" : ""}`}>
+          {!hasKey
+            ? "⊘ ElevenLabs key required"
+            : `ElevenLabs Music · ${durationS.toFixed(0)}s · auto-fits project`}
+        </span>
+        <button
+          type="button"
+          className="btn primary"
+          disabled={job?.status === "running"}
+          onClick={onGenerate}
+        >
+          {job?.status === "running" ? "● Generating…" : "⏵ Generate music"}
+        </button>
+      </div>
     </div>
   );
 }
