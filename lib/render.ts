@@ -1,6 +1,7 @@
 "use client";
 
 import type { Aspect, Project, Section } from "./types";
+import { buildCubeLUT } from "./grade";
 
 export type RenderProgress = {
   phase: "loading-engine" | "fetching-assets" | "encoding" | "writing" | "done" | "error";
@@ -384,12 +385,20 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
 
   onProgress?.({ phase: "writing", pct: 92, message: "Muxing to MP4…" });
 
+  let lutName: string | null = null;
+  if (project.grade) {
+    lutName = "grade.cube";
+    await ffmpeg.writeFile(lutName, new TextEncoder().encode(buildCubeLUT(project.grade)));
+  }
+  const vfChain = lutName ? ["-vf", `lut3d=${lutName}`] : [];
+
   if (audioMixName) {
     await ffmpeg.exec([
       "-i", "out_mux.ts",
       "-i", audioMixName,
       "-map", "0:v",
       "-map", "1:a",
+      ...vfChain,
       "-c:v", "libx264",
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
@@ -400,6 +409,7 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
   } else {
     await ffmpeg.exec([
       "-i", "out_mux.ts",
+      ...vfChain,
       "-c:v", "libx264",
       "-pix_fmt", "yuv420p",
       "-movflags", "+faststart",
@@ -418,6 +428,7 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
     "concat.txt",
     ...audioFiles,
     ...(audioMixName ? [audioMixName] : []),
+    ...(lutName ? [lutName] : []),
   ];
   for (const n of cleanup) {
     try {
