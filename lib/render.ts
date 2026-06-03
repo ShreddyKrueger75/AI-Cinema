@@ -319,21 +319,107 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
     "out_mux.ts",
   ]);
 
-  onProgress?.({ phase: "writing", pct: 90, message: "Muxing to MP4…" });
+  const audioFiles: string[] = [];
+  let audioMixName: string | null = null;
 
-  await ffmpeg.exec([
-    "-i", "out_mux.ts",
-    "-c:v", "libx264",
-    "-pix_fmt", "yuv420p",
-    "-movflags", "+faststart",
-    "out.mp4",
-  ]);
+  const voWithAudio = project.vo_segments.filter((v) => v.output_url && v.duration_s > 0);
+  const hasMusic = !!project.music_track?.output_url;
+  if (voWithAudio.length > 0 || hasMusic) {
+    onProgress?.({ phase: "encoding", pct: 80, message: "Mixing audio (VO + music)…" });
+    const inputs: string[] = [];
+    const filterParts: string[] = [];
+    const mixLabels: string[] = [];
+    let inputIndex = 0;
+
+    if (hasMusic) {
+      const musicData = await fetchFile(project.music_track!.output_url!);
+      const musicName = "music.mp3";
+      await ffmpeg.writeFile(musicName, musicData);
+      audioFiles.push(musicName);
+      inputs.push("-i", musicName);
+      filterParts.push(
+        `[${inputIndex}:a]aresample=44100,atrim=0:${plan.totalDuration.toFixed(2)},apad=whole_dur=${plan.totalDuration.toFixed(2)},volume=${voWithAudio.length > 0 ? "0.35" : "0.7"}[mus]`,
+      );
+      mixLabels.push("[mus]");
+      inputIndex += 1;
+    }
+
+    voWithAudio.forEach((seg, i) => {
+      const name = `vo_${i}.mp3`;
+      audioFiles.push(name);
+      inputs.push("-i", name);
+      const delayMs = Math.max(0, Math.round(seg.start_s * 1000));
+      filterParts.push(
+        `[${inputIndex}:a]aresample=44100,adelay=${delayMs}|${delayMs},volume=1.0[vo${i}]`,
+      );
+      mixLabels.push(`[vo${i}]`);
+      inputIndex += 1;
+    });
+
+    // Write VO files (do this AFTER constructing filter so inputs map cleanly)
+    for (let i = 0; i < voWithAudio.length; i++) {
+      const seg = voWithAudio[i];
+      const data = await fetchFile(seg.output_url!);
+      await ffmpeg.writeFile(`vo_${i}.mp3`, data);
+    }
+
+    const mixDuration = plan.totalDuration.toFixed(2);
+    const amix =
+      mixLabels.length > 1
+        ? `${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=longest:normalize=0[a]`
+        : `${mixLabels[0]}anull[a]`;
+    const filterGraph = `${filterParts.join(";")};${amix}`;
+
+    audioMixName = "mix.m4a";
+    await ffmpeg.exec([
+      ...inputs,
+      "-filter_complex", filterGraph,
+      "-map", "[a]",
+      "-c:a", "aac",
+      "-b:a", "192k",
+      "-t", mixDuration,
+      audioMixName,
+    ]);
+  }
+
+  onProgress?.({ phase: "writing", pct: 92, message: "Muxing to MP4…" });
+
+  if (audioMixName) {
+    await ffmpeg.exec([
+      "-i", "out_mux.ts",
+      "-i", audioMixName,
+      "-map", "0:v",
+      "-map", "1:a",
+      "-c:v", "libx264",
+      "-pix_fmt", "yuv420p",
+      "-c:a", "aac",
+      "-shortest",
+      "-movflags", "+faststart",
+      "out.mp4",
+    ]);
+  } else {
+    await ffmpeg.exec([
+      "-i", "out_mux.ts",
+      "-c:v", "libx264",
+      "-pix_fmt", "yuv420p",
+      "-movflags", "+faststart",
+      "out.mp4",
+    ]);
+  }
 
   const data = (await ffmpeg.readFile("out.mp4")) as Uint8Array;
   const blob = new Blob([data], { type: "video/mp4" });
   const url = URL.createObjectURL(blob);
 
-  for (const n of [...segNames, "out_mux.ts", "out.mp4", "concat.txt"]) {
+  const cleanup = [
+    ...segNames,
+    "out_mux.ts",
+    "out.mp4",
+    "concat.txt",
+    ...audioFiles,
+    ...(audioMixName ? [audioMixName] : []),
+  ];
+  for (const n of cleanup) {
     try {
       await ffmpeg.deleteFile(n);
     } catch {
