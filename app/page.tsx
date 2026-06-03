@@ -275,6 +275,48 @@ export default function HomePage() {
   const [renderOpen, setRenderOpen] = useState(false);
   const [providersOpen, setProvidersOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [playPosition, setPlayPosition] = useState<number | null>(null);
+  const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stopPreview = useCallback(() => {
+    if (playTimerRef.current) clearTimeout(playTimerRef.current);
+    playTimerRef.current = null;
+    setPlayPosition(null);
+  }, []);
+
+  useEffect(() => () => {
+    if (playTimerRef.current) clearTimeout(playTimerRef.current);
+  }, []);
+
+  const startPreview = useCallback(() => {
+    if (project.sections.length === 0) return;
+    if (playTimerRef.current) clearTimeout(playTimerRef.current);
+    setPlayPosition(0);
+    const advance = (i: number) => {
+      const section = project.sections[i];
+      if (!section) {
+        setPlayPosition(null);
+        playTimerRef.current = null;
+        return;
+      }
+      const ms = Math.max(300, section.duration_s * 1000);
+      playTimerRef.current = setTimeout(() => {
+        const next = i + 1;
+        if (next >= project.sections.length) {
+          setPlayPosition(null);
+          playTimerRef.current = null;
+        } else {
+          setPlayPosition(next);
+          advance(next);
+        }
+      }, ms);
+    };
+    advance(0);
+  }, [project.sections]);
+
+  const togglePreview = playPosition !== null ? stopPreview : startPreview;
+  const previewSectionId =
+    playPosition !== null ? project.sections[playPosition]?.id ?? null : null;
 
   const handleReset = useCallback(() => {
     if (confirm("Reset project to defaults? Unsaved work will be lost.")) resetProject();
@@ -416,7 +458,14 @@ export default function HomePage() {
           <button type="button" className="btn ghost" onClick={handleReset} title="Reset to defaults">↺ Reset</button>
           <button type="button" className="btn ghost" onClick={handleImport}>Import</button>
           <button type="button" className="btn ghost" onClick={handleExport}>Export</button>
-          <button type="button" className="btn" onClick={() => setRenderOpen(true)}>Preview</button>
+          <button
+            type="button"
+            className={`btn ${playPosition !== null ? "primary" : ""}`}
+            onClick={togglePreview}
+            title="Walk through each section for its duration"
+          >
+            {playPosition !== null ? "■ Stop" : "▶ Preview"}
+          </button>
           <button type="button" className="btn primary" onClick={() => setRenderOpen(true)}>▶︎ Render</button>
         </div>
       </div>
@@ -532,6 +581,7 @@ export default function HomePage() {
         >
           {project.sections.map((section) => {
             const isActive = section.id === activeSectionId;
+            const isPreviewing = section.id === previewSectionId;
             const versionIdx = section.versions.findIndex((v) => v.id === section.active_version_id);
             const empty = versionIdx < 0;
             const versionLabel = empty ? "— not yet" : `v${versionIdx + 1} ▾`;
@@ -539,8 +589,11 @@ export default function HomePage() {
             return (
               <div
                 key={section.id}
-                className={`clip${isActive ? " active" : ""}${empty ? " empty" : ""}`}
+                className={`clip${isActive ? " active" : ""}${empty ? " empty" : ""}${isPreviewing ? " previewing" : ""}`}
                 onClick={() => setActiveSection(section.id)}
+                style={
+                  isPreviewing ? { animationDuration: `${section.duration_s}s` } : undefined
+                }
               >
                 {trans ? (
                   <span className="popover-anchor">

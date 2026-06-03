@@ -219,6 +219,31 @@ button {
   padding-top: 15px;
 }
 .clip.empty { background: transparent; }
+.clip.previewing {
+  background: var(--color-blood-soft);
+  border-color: var(--color-blood);
+  box-shadow: inset 0 0 0 1px var(--color-blood-faint);
+}
+.clip.previewing::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--color-blood);
+  transform-origin: left center;
+  animation-name: preview-progress;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+  animation-iteration-count: 1;
+  animation-duration: inherit;
+  z-index: 2;
+}
+@keyframes preview-progress {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
 .clip-num { font-size: 9px; letter-spacing: 0.24em; color: var(--color-fg-faint); margin-bottom: 8px; }
 .clip.active .clip-num { color: var(--color-blood); }
 .clip-title { font-size: 13px; color: var(--color-fg); margin-bottom: 8px; }
