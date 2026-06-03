@@ -2,8 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { selectActiveSection, useStore } from "@/lib/store";
-import type { Section, Still } from "@/lib/types";
+import type { Section } from "@/lib/types";
 import { downloadProjectJSON, pickProjectJSONFile } from "@/lib/serialize";
+import {
+  DURATION_OPTIONS_S,
+  IMAGE_MODELS,
+  MOTION_MODELS,
+  imageModelCost,
+  motionModelCost,
+} from "@/lib/models";
 
 function formatTimecode(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -11,10 +18,21 @@ function formatTimecode(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function transitionTitle(type: string, duration: number): string {
+function formatTransition(type: string, duration: number): string {
   if (type === "cut") return "Cut";
   if (type === "fade_black") return "Fade to black";
   return `Crossfade ${duration.toFixed(1)}s`;
+}
+
+function formatInputRef(ref: string | null | undefined): string {
+  if (!ref) return "none";
+  const m = ref.match(/^section:section_(\d+):last_frame$/);
+  if (m) return `${m[1]} last frame`;
+  return ref;
+}
+
+function formatCost(c: number): string {
+  return c >= 1 ? `~ $${c.toFixed(2)}` : `~ $${c.toFixed(3)}`;
 }
 
 export default function HomePage() {
@@ -22,8 +40,6 @@ export default function HomePage() {
   const activeSectionId = useStore((s) => s.activeSectionId);
   const activeSection = useStore(selectActiveSection);
   const setActiveSection = useStore((s) => s.setActiveSection);
-  const setActiveVersion = useStore((s) => s.setActiveVersion);
-  const setActiveStill = useStore((s) => s.setActiveStill);
   const setProject = useStore((s) => s.setProject);
 
   const [hydrated, setHydrated] = useState(false);
@@ -32,21 +48,16 @@ export default function HomePage() {
   }, []);
 
   const transitionsByTo = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const t of project.transitions) m.set(t.to_section_id, transitionTitle(t.type, t.duration_s));
-    return m;
-  }, [project.transitions]);
-
-  const transitionTypeByTo = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const t of project.transitions) m.set(t.to_section_id, t.type);
+    const m = new Map<string, { label: string; type: string }>();
+    for (const t of project.transitions) {
+      m.set(t.to_section_id, { label: formatTransition(t.type, t.duration_s), type: t.type });
+    }
     return m;
   }, [project.transitions]);
 
   const clipsCount = project.sections.length;
 
   const handleExport = () => downloadProjectJSON(project);
-
   const handleImport = async () => {
     const result = await pickProjectJSONFile();
     if (result.ok) setProject(result.project);
@@ -55,7 +66,6 @@ export default function HomePage() {
 
   return (
     <>
-      {/* STATUS */}
       <div className="statusbar">
         <div className="left">
           <span><span className="dot" />SYSTEM // ONLINE</span>
@@ -68,14 +78,12 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* WORDMARK */}
       <div className="wordmark">
         <span className="painted">AI Cinema</span>
         <span className="lockup">by Bloody Finger</span>
       </div>
       <div className="tagline">Cinematic video, made easy. Bring your own model.</div>
 
-      {/* PROJECT HEADER */}
       <div className="project-head">
         <div className="project-meta">
           <h1><span className="slash">//</span> {project.name}</h1>
@@ -94,7 +102,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* LOOK BAR */}
       <div className="lookbar">
         <div className="slot">
           <div className="label">// BRIEF</div>
@@ -114,7 +121,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* TIMELINE */}
       <div className="timeline-wrap">
         <div className="tl-label">
           <span>// TIMELINE</span>
@@ -134,7 +140,6 @@ export default function HomePage() {
             const empty = versionIdx < 0;
             const versionLabel = empty ? "— not yet" : `v${versionIdx + 1} ▾`;
             const trans = transitionsByTo.get(section.id);
-            const transType = transitionTypeByTo.get(section.id);
             return (
               <div
                 key={section.id}
@@ -144,8 +149,8 @@ export default function HomePage() {
                 {trans ? (
                   <div
                     className="trans-marker"
-                    data-type={transType === "crossfade" || transType === "fade_black" ? "fade" : undefined}
-                    title={trans}
+                    data-type={trans.type === "crossfade" || trans.type === "fade_black" ? "fade" : undefined}
+                    title={trans.label}
                   >
                     ◇
                   </div>
@@ -195,18 +200,8 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* FLOW PANEL */}
-      {activeSection ? (
-        <FlowPanel
-          section={activeSection}
-          startTime={(activeSection.index - 1) * 3}
-          onClose={() => setActiveSection(null)}
-          onSelectVersion={(vid) => setActiveVersion(activeSection.id, vid)}
-          onSelectStill={(sid) => setActiveStill(activeSection.id, sid)}
-        />
-      ) : null}
+      {activeSection ? <FlowPanel section={activeSection} project={project} /> : null}
 
-      {/* FOOTER */}
       <div className="footstrip">
         <span>// AI CINEMA · BUILT FOR THE LOVE OF THE GAME · MIT</span>
         <span>BLOODY FINGER SOFTWARE — 2026</span>
@@ -215,21 +210,24 @@ export default function HomePage() {
   );
 }
 
-function FlowPanel({
-  section,
-  startTime,
-  onClose,
-  onSelectVersion,
-  onSelectStill,
-}: {
-  section: Section;
-  startTime: number;
-  onClose: () => void;
-  onSelectVersion: (id: string) => void;
-  onSelectStill: (id: string) => void;
-}) {
+function FlowPanel({ section, project }: { section: Section; project: { sections: Section[] } }) {
+  const setActiveSection = useStore((s) => s.setActiveSection);
+  const setActiveVersion = useStore((s) => s.setActiveVersion);
+  const setActiveStill = useStore((s) => s.setActiveStill);
+  const updateStill = useStore((s) => s.updateStill);
+  const addStill = useStore((s) => s.addStill);
+  const removeStill = useStore((s) => s.removeStill);
+  const updateClipVersion = useStore((s) => s.updateClipVersion);
+  const addClipVersion = useStore((s) => s.addClipVersion);
+  const removeClipVersion = useStore((s) => s.removeClipVersion);
+
+  const startTime = (section.index - 1) * 3;
   const activeVersion = section.versions.find((v) => v.id === section.active_version_id);
   const activeStill = section.stills.find((s) => s.id === section.active_still_id);
+
+  const priorClipSections = project.sections.filter(
+    (s) => s.type === "clip" && s.index < section.index,
+  );
 
   if (section.type === "title") {
     return (
@@ -240,7 +238,7 @@ function FlowPanel({
             <span className="timecode">{formatTimecode(startTime)} — {formatTimecode(startTime + section.duration_s)}</span>
           </div>
           <div className="right">
-            <button type="button" className="btn ghost" onClick={onClose}>✕ Close</button>
+            <button type="button" className="btn ghost" onClick={() => setActiveSection(null)}>✕ Close</button>
           </div>
         </div>
         <div className="flow-body" style={{ gridTemplateColumns: "1fr" }}>
@@ -248,13 +246,20 @@ function FlowPanel({
             <div className="stage-title"><span className="num">01</span>TITLE CARD</div>
             <div className="field">
               <div className="field-label">Text</div>
-              <div className="field-input tall">{activeVersion && "text" in activeVersion ? activeVersion.text : ""}</div>
+              <div className="field-input tall">
+                {activeVersion && activeVersion.kind === "title" ? activeVersion.text : ""}
+              </div>
             </div>
           </div>
         </div>
       </div>
     );
   }
+
+  const stillCost = activeStill ? imageModelCost(activeStill.model) : 0;
+  const motionCost = activeVersion && activeVersion.kind === "clip"
+    ? motionModelCost(activeVersion.motion.model, activeVersion.motion.duration_s)
+    : 0;
 
   return (
     <div className="flow-panel">
@@ -271,7 +276,7 @@ function FlowPanel({
               <span className="caret">▾</span>
             </div>
           ) : null}
-          <button type="button" className="btn ghost" onClick={onClose}>✕ Close</button>
+          <button type="button" className="btn ghost" onClick={() => setActiveSection(null)}>✕ Close</button>
         </div>
       </div>
 
@@ -282,54 +287,104 @@ function FlowPanel({
 
           <div className="field">
             <div className="field-label">Image prompt</div>
-            <div className="field-input tall">{activeStill?.image_prompt ?? "—"}</div>
+            <textarea
+              className="field-input tall"
+              rows={3}
+              value={activeStill?.image_prompt ?? ""}
+              disabled={!activeStill}
+              placeholder={activeStill ? "" : "+ new still to start"}
+              onChange={(e) => activeStill && updateStill(section.id, activeStill.id, { image_prompt: e.target.value })}
+            />
           </div>
 
           <div className="field-row three">
             <div className="field">
               <div className="field-label">Model</div>
-              <div className="field-pill">{activeStill?.model ?? "—"} <span className="caret">▾</span></div>
+              <div className="field-pill">
+                <select
+                  value={activeStill?.model ?? "flux-1.1-pro"}
+                  disabled={!activeStill}
+                  onChange={(e) => activeStill && updateStill(section.id, activeStill.id, { model: e.target.value })}
+                >
+                  {IMAGE_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>{m.label}</option>
+                  ))}
+                </select>
+                <span className="caret">▾</span>
+              </div>
             </div>
             <div className="field">
               <div className="field-label">Input</div>
-              <div className="field-pill">{formatInputRef(activeStill?.input_ref)} <span className="caret">▾</span></div>
+              <div className="field-pill">
+                <select
+                  value={activeStill?.input_ref ?? ""}
+                  disabled={!activeStill}
+                  onChange={(e) => activeStill && updateStill(section.id, activeStill.id, { input_ref: e.target.value || null })}
+                >
+                  <option value="">none</option>
+                  {priorClipSections.map((s) => (
+                    <option key={s.id} value={`section:${s.id}:last_frame`}>
+                      {s.index.toString().padStart(2, "0")} last frame
+                    </option>
+                  ))}
+                </select>
+                <span className="caret">▾</span>
+              </div>
             </div>
             <div className="field">
               <div className="field-label">Cost</div>
-              <div className="field-pill cost">~ $0.04</div>
+              <div className="field-pill cost">{formatCost(stillCost)}</div>
             </div>
           </div>
 
           <div className="preview-row">
             <div className="preview-box">
-              {activeStill ? <span className="vbadge">{stillBadge(section, activeStill)} · active</span> : null}
+              {activeStill ? (
+                <span className="vbadge">s{section.stills.findIndex((s) => s.id === activeStill.id) + 1} · active</span>
+              ) : null}
               <span className="play">▶︎</span>
               <span className="time">still</span>
             </div>
             <div className="versions-list">
               {section.stills.map((still, i) => {
                 const isActive = still.id === section.active_still_id;
+                const canRemove = section.stills.length > 1;
                 return (
                   <div
                     key={still.id}
                     className={`vrow${isActive ? " active" : ""}`}
-                    onClick={() => onSelectStill(still.id)}
+                    onClick={() => setActiveStill(section.id, still.id)}
                   >
                     <div className="vlabel">
                       <span className="vid">s{i + 1}</span>
                       <span className="vdesc">{still.label}</span>
                     </div>
-                    <span className={`vmark ${isActive ? "active" : "muted"}`}>{isActive ? "●" : "↻"}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      {canRemove ? (
+                        <button
+                          type="button"
+                          className="vrow-remove"
+                          title="Remove still"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeStill(section.id, still.id);
+                          }}
+                        >
+                          ✕
+                        </button>
+                      ) : null}
+                      <span className={`vmark ${isActive ? "active" : "muted"}`}>{isActive ? "●" : "↻"}</span>
+                    </div>
                   </div>
                 );
               })}
-              <div className="vrow add">+ new still</div>
+              <div className="vrow add" onClick={() => addStill(section.id)}>+ new still</div>
             </div>
           </div>
 
           <div className="gen-row">
-            <span className="gen-cost">~ $0.04 per still</span>
-            <button type="button" className="btn primary">⏵ Generate still</button>
+            <span className="gen-cost">{formatCost(stillCost)} per still</span>
+            <button type="button" className="btn primary" disabled={!activeStill}>⏵ Generate still</button>
           </div>
         </div>
 
@@ -339,28 +394,64 @@ function FlowPanel({
 
           <div className="field">
             <div className="field-label">Motion prompt</div>
-            <div className="field-input tall">
-              {activeVersion && "motion" in activeVersion ? activeVersion.motion.prompt : "—"}
-            </div>
+            <textarea
+              className="field-input tall"
+              rows={3}
+              value={activeVersion && activeVersion.kind === "clip" ? activeVersion.motion.prompt : ""}
+              disabled={!activeVersion || activeVersion.kind !== "clip"}
+              placeholder={activeVersion ? "" : "+ new version to start"}
+              onChange={(e) =>
+                activeVersion &&
+                activeVersion.kind === "clip" &&
+                updateClipVersion(section.id, activeVersion.id, { motion: { prompt: e.target.value } })
+              }
+            />
           </div>
 
           <div className="field-row three">
             <div className="field">
               <div className="field-label">Model</div>
               <div className="field-pill">
-                {activeVersion && "motion" in activeVersion ? activeVersion.motion.model : "—"} <span className="caret">▾</span>
+                <select
+                  value={activeVersion && activeVersion.kind === "clip" ? activeVersion.motion.model : "runway-gen4"}
+                  disabled={!activeVersion || activeVersion.kind !== "clip"}
+                  onChange={(e) =>
+                    activeVersion &&
+                    activeVersion.kind === "clip" &&
+                    updateClipVersion(section.id, activeVersion.id, { motion: { model: e.target.value } })
+                  }
+                >
+                  {MOTION_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>{m.label}</option>
+                  ))}
+                </select>
+                <span className="caret">▾</span>
               </div>
             </div>
             <div className="field">
               <div className="field-label">Duration</div>
               <div className="field-pill">
-                {activeVersion && "motion" in activeVersion ? activeVersion.motion.duration_s.toFixed(1) : "—"}s{" "}
+                <select
+                  value={activeVersion && activeVersion.kind === "clip" ? activeVersion.motion.duration_s : section.duration_s}
+                  disabled={!activeVersion || activeVersion.kind !== "clip"}
+                  onChange={(e) =>
+                    activeVersion &&
+                    activeVersion.kind === "clip" &&
+                    updateClipVersion(section.id, activeVersion.id, {
+                      motion: { duration_s: Number(e.target.value) },
+                    })
+                  }
+                >
+                  {DURATION_OPTIONS_S.map((d) => (
+                    <option key={d} value={d}>{d.toFixed(1)}s</option>
+                  ))}
+                </select>
                 <span className="caret">▾</span>
               </div>
             </div>
             <div className="field">
               <div className="field-label">Cost</div>
-              <div className="field-pill cost">~ $1.20</div>
+              <div className="field-pill cost">{formatCost(motionCost)}</div>
             </div>
           </div>
 
@@ -370,32 +461,50 @@ function FlowPanel({
                 <span className="vbadge">v{section.versions.findIndex((v) => v.id === activeVersion.id) + 1} · active</span>
               ) : null}
               <span className="play">▶︎</span>
-              <span className="time">0:00 / {section.duration_s.toFixed(1)}</span>
+              <span className="time">0:00 / {activeVersion && activeVersion.kind === "clip" ? activeVersion.motion.duration_s.toFixed(1) : section.duration_s.toFixed(1)}</span>
             </div>
             <div className="versions-list">
               {section.versions.map((v, i) => {
                 const isActive = v.id === section.active_version_id;
+                const canRemove = section.versions.length > 1;
                 return (
                   <div
                     key={v.id}
                     className={`vrow${isActive ? " active" : ""}`}
-                    onClick={() => onSelectVersion(v.id)}
+                    onClick={() => setActiveVersion(section.id, v.id)}
                   >
                     <div className="vlabel">
                       <span className="vid">v{i + 1}</span>
                       <span className="vdesc">{v.label}</span>
                     </div>
-                    <span className={`vmark ${isActive ? "active" : "muted"}`}>{isActive ? "●" : "↻"}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      {canRemove ? (
+                        <button
+                          type="button"
+                          className="vrow-remove"
+                          title="Remove version"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeClipVersion(section.id, v.id);
+                          }}
+                        >
+                          ✕
+                        </button>
+                      ) : null}
+                      <span className={`vmark ${isActive ? "active" : "muted"}`}>{isActive ? "●" : "↻"}</span>
+                    </div>
                   </div>
                 );
               })}
-              <div className="vrow add">+ new version</div>
+              <div className="vrow add" onClick={() => addClipVersion(section.id)}>+ new version</div>
             </div>
           </div>
 
           <div className="gen-row">
-            <span className="gen-cost">~ $1.20 per version · project total $4.80 of $20.00 cap</span>
-            <button type="button" className="btn primary">⏵ Generate v{section.versions.length + 1}</button>
+            <span className="gen-cost">{formatCost(motionCost)} per version</span>
+            <button type="button" className="btn primary" disabled={!activeVersion}>
+              ⏵ Generate v{section.versions.length + 1}
+            </button>
           </div>
         </div>
       </div>
@@ -403,14 +512,3 @@ function FlowPanel({
   );
 }
 
-function formatInputRef(ref: string | null | undefined): string {
-  if (!ref) return "none";
-  const m = ref.match(/^section:section_(\d+):last_frame$/);
-  if (m) return `${m[1]} last frame`;
-  return ref;
-}
-
-function stillBadge(section: Section, still: Still): string {
-  const i = section.stills.findIndex((s) => s.id === still.id);
-  return `s${i + 1}`;
-}

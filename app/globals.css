@@ -365,8 +365,16 @@ button {
   font-family: var(--font-mono);
   font-size: 13px;
   min-height: 42px;
+  width: 100%;
+  line-height: 1.5;
 }
 .field-input.tall { min-height: 60px; }
+textarea.field-input {
+  resize: vertical;
+  outline: none;
+}
+textarea.field-input:focus,
+.field-pill:focus-within { border-color: var(--color-blood-faint); }
 
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field-row.three { grid-template-columns: 2fr 1fr 1fr; }
@@ -381,6 +389,20 @@ button {
 }
 .field-pill .caret { color: var(--color-fg-faint); font-size: 9px; margin-left: 8px; }
 .field-pill.cost { color: var(--color-warn); }
+.field-pill select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  outline: none;
+  flex: 1;
+  cursor: pointer;
+  padding: 0;
+  min-width: 0;
+}
+.field-pill select option { background: var(--color-bg); color: var(--color-fg); }
 
 .preview-row {
   display: grid;
@@ -447,6 +469,16 @@ button {
 .vrow .vmark.active { color: var(--color-blood); }
 .vrow.add { border-style: dashed; color: var(--color-fg-faint); cursor: pointer; justify-content: center; }
 .vrow.add:hover { color: var(--color-blood); border-color: var(--color-blood-faint); }
+.vrow-remove {
+  font-size: 10px;
+  color: var(--color-fg-faint);
+  opacity: 0;
+  cursor: pointer;
+  padding: 0 6px;
+  letter-spacing: 0.12em;
+}
+.vrow:hover .vrow-remove { opacity: 1; }
+.vrow-remove:hover { color: var(--color-blood); }
 
 .gen-row {
   display: flex;
