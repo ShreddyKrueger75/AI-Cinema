@@ -40,6 +40,7 @@ import {
 import { useLibrary, type LibraryItem, type LibraryKind } from "@/lib/library";
 import { TEMPLATES } from "@/lib/templates";
 import { useProjectLibrary } from "@/lib/projects";
+import { useHistory } from "@/lib/history";
 import { useGenState, stillJobKey, motionJobKey, type GenSlot } from "@/lib/genstate";
 import {
   composePromptWithBrief,
@@ -282,6 +283,78 @@ export default function HomePage() {
       Promise.resolve(useProjectLibrary.persist.rehydrate()),
     ]).finally(() => setHydrated(true));
   }, []);
+
+  const historyPastLen = useHistory((s) => s.past.length);
+  const historyFutureLen = useHistory((s) => s.future.length);
+
+  const projectRef = useRef(project);
+  const skipNextHistory = useRef(false);
+  const pendingHistoryPush = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (projectRef.current === project) return;
+    if (skipNextHistory.current) {
+      skipNextHistory.current = false;
+      projectRef.current = project;
+      return;
+    }
+    const prev = projectRef.current;
+    projectRef.current = project;
+    if (pendingHistoryPush.current) clearTimeout(pendingHistoryPush.current);
+    pendingHistoryPush.current = setTimeout(() => {
+      useHistory.getState().push(prev);
+      pendingHistoryPush.current = null;
+    }, 350);
+  }, [project]);
+
+  useEffect(() => () => {
+    if (pendingHistoryPush.current) clearTimeout(pendingHistoryPush.current);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (pendingHistoryPush.current) {
+      clearTimeout(pendingHistoryPush.current);
+      pendingHistoryPush.current = null;
+      useHistory.getState().push(projectRef.current);
+    }
+    const previous = useHistory.getState().undo(project);
+    if (!previous) return;
+    skipNextHistory.current = true;
+    setProject(previous);
+  }, [project, setProject]);
+
+  const handleRedo = useCallback(() => {
+    if (pendingHistoryPush.current) {
+      clearTimeout(pendingHistoryPush.current);
+      pendingHistoryPush.current = null;
+    }
+    const next = useHistory.getState().redo(project);
+    if (!next) return;
+    skipNextHistory.current = true;
+    setProject(next);
+  }, [project, setProject]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const editable =
+        tag === "input" || tag === "textarea" || target?.isContentEditable;
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && (e.key === "z" || e.key === "Z")) {
+        if (editable) return;
+        e.preventDefault();
+        if (e.shiftKey) handleRedo();
+        else handleUndo();
+      } else if (mod && (e.key === "y" || e.key === "Y")) {
+        if (editable) return;
+        e.preventDefault();
+        handleRedo();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handleUndo, handleRedo]);
 
   const projectStubs = useProjectLibrary((s) => s.order.map((id) => s.projects[id]).filter(Boolean));
   const saveProjectToLibrary = useProjectLibrary((s) => s.saveProject);
@@ -676,6 +749,24 @@ export default function HomePage() {
             title="API keys"
           >
             🔑 Keys{configuredKeyCount > 0 ? ` (${configuredKeyCount})` : ""}
+          </button>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={handleUndo}
+            disabled={historyPastLen === 0}
+            title="Undo (⌘Z)"
+          >
+            ↶
+          </button>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={handleRedo}
+            disabled={historyFutureLen === 0}
+            title="Redo (⇧⌘Z)"
+          >
+            ↷
           </button>
           <button type="button" className="btn ghost" onClick={handleReset} title="Reset to defaults">↺ Reset</button>
           <button type="button" className="btn ghost" onClick={handleImport}>Import</button>
