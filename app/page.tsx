@@ -2234,14 +2234,19 @@ function ConfirmViewport() {
         <div className="confirm-title" id={titleId}>{prompt.title}</div>
         <div className="confirm-message" id={messageId}>{prompt.message}</div>
         <div className="confirm-actions">
-          <button type="button" className="btn ghost" onClick={cancel}>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={cancel}
+            autoFocus={prompt.destructive}
+          >
             {prompt.cancel_label}
           </button>
           <button
             type="button"
             className={`btn ${prompt.destructive ? "danger" : "primary"}`}
             onClick={() => { resolve(); }}
-            autoFocus
+            autoFocus={!prompt.destructive}
           >
             {prompt.confirm_label}
           </button>
