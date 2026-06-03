@@ -2,7 +2,21 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { ClipVersion, Project, Section, Still } from "./types";
+import type {
+  Aspect,
+  Brief,
+  ClipVersion,
+  Grade,
+  MusicTrack,
+  Project,
+  Section,
+  Still,
+  TitleStyle,
+  TitleVersion,
+  Transition,
+  TransitionType,
+  VOSegment,
+} from "./types";
 import { createDefaultProject } from "./defaults";
 
 export type StoreState = {
@@ -10,12 +24,22 @@ export type StoreState = {
   activeSectionId: string | null;
   setProject: (project: Project) => void;
   resetProject: () => void;
+
+  updateProjectMeta: (patch: { name?: string; aspect?: Aspect }) => void;
+
   setActiveSection: (id: string | null) => void;
   setActiveVersion: (sectionId: string, versionId: string) => void;
   setActiveStill: (sectionId: string, stillId: string) => void;
+
+  updateSection: (sectionId: string, patch: { title?: string; duration_s?: number }) => void;
+  addClipSection: (afterSectionId?: string | null) => void;
+  addTitleSection: (afterSectionId?: string | null) => void;
+  removeSection: (sectionId: string) => void;
+
   updateStill: (sectionId: string, stillId: string, patch: Partial<Omit<Still, "id">>) => void;
   addStill: (sectionId: string) => void;
   removeStill: (sectionId: string, stillId: string) => void;
+
   updateClipVersion: (
     sectionId: string,
     versionId: string,
@@ -28,6 +52,25 @@ export type StoreState = {
   ) => void;
   addClipVersion: (sectionId: string) => void;
   removeClipVersion: (sectionId: string, versionId: string) => void;
+
+  updateTitleVersion: (
+    sectionId: string,
+    versionId: string,
+    patch: { label?: string; text?: string; style_ref?: string | null; output_url?: string },
+  ) => void;
+  addTitleVersion: (sectionId: string) => void;
+  removeTitleVersion: (sectionId: string, versionId: string) => void;
+
+  updateTransition: (transitionId: string, patch: { type?: TransitionType; duration_s?: number }) => void;
+
+  updateBrief: (patch: Partial<Omit<Brief, "id">>) => void;
+  updateGrade: (patch: Partial<Omit<Grade, "id">>) => void;
+  updateMusic: (patch: Partial<Omit<MusicTrack, "id">>) => void;
+  updateTitleStyle: (patch: Partial<Omit<TitleStyle, "id">>) => void;
+
+  addVOSegment: () => void;
+  updateVOSegment: (id: string, patch: Partial<Omit<VOSegment, "id">>) => void;
+  removeVOSegment: (id: string) => void;
 };
 
 const STORAGE_KEY = "ai-cinema:project:v1";
@@ -48,6 +91,87 @@ function newId(prefix: string): string {
   return `${prefix}_${u.slice(0, 8)}`;
 }
 
+function reindexAndRetotal(project: Project): Project {
+  const sections = project.sections.map((s, i) => ({ ...s, index: i + 1 }));
+  const duration_s = sections.reduce((acc, s) => acc + s.duration_s, 0);
+  return { ...project, sections, duration_s };
+}
+
+function reconcileTransitions(project: Project): Project {
+  const ids = project.sections.map((s) => s.id);
+  const wanted: Transition[] = [];
+  for (let i = 0; i < ids.length - 1; i++) {
+    const from = ids[i];
+    const to = ids[i + 1];
+    const existing = project.transitions.find(
+      (t) => t.from_section_id === from && t.to_section_id === to,
+    );
+    if (existing) {
+      wanted.push(existing);
+    } else {
+      wanted.push({
+        id: newId("tr"),
+        from_section_id: from,
+        to_section_id: to,
+        type: "crossfade",
+        duration_s: 0.4,
+      });
+    }
+  }
+  return { ...project, transitions: wanted };
+}
+
+function buildClipSection(index: number): Section {
+  const id = newId("section");
+  const stillId = newId("still");
+  const versionId = newId("ver");
+  return {
+    id,
+    index,
+    type: "clip",
+    title: "New clip",
+    duration_s: 3,
+    stills: [
+      { id: stillId, label: "still 1", image_prompt: "", model: "pollinations", input_ref: null },
+    ],
+    active_still_id: stillId,
+    versions: [
+      {
+        id: versionId,
+        kind: "clip",
+        label: "v1",
+        still_ref: stillId,
+        motion: { prompt: "", model: "ken-burns", duration_s: 3 },
+      },
+    ],
+    active_version_id: versionId,
+  };
+}
+
+function buildTitleSection(index: number): Section {
+  const id = newId("section");
+  const versionId = newId("ver");
+  return {
+    id,
+    index,
+    type: "title",
+    title: "New title",
+    duration_s: 3,
+    stills: [],
+    active_still_id: null,
+    versions: [
+      {
+        id: versionId,
+        kind: "title",
+        label: "v1",
+        text: "Title text",
+        style_ref: null,
+      },
+    ],
+    active_version_id: versionId,
+  };
+}
+
 export const useStore = create<StoreState>()(
   persist(
     (set) => ({
@@ -57,6 +181,15 @@ export const useStore = create<StoreState>()(
       setProject: (project) => set({ project: touch(project) }),
 
       resetProject: () => set({ project: createDefaultProject(), activeSectionId: "section_03" }),
+
+      updateProjectMeta: (patch) =>
+        set((state) => ({
+          project: touch({
+            ...state.project,
+            ...(patch.name !== undefined ? { name: patch.name } : {}),
+            ...(patch.aspect !== undefined ? { aspect: patch.aspect } : {}),
+          }),
+        })),
 
       setActiveSection: (id) => set({ activeSectionId: id }),
 
@@ -69,6 +202,58 @@ export const useStore = create<StoreState>()(
         set((state) => ({
           project: mapSection(state.project, sectionId, (s) => ({ ...s, active_still_id: stillId })),
         })),
+
+      updateSection: (sectionId, patch) =>
+        set((state) => {
+          let next = mapSection(state.project, sectionId, (s) => ({
+            ...s,
+            ...(patch.title !== undefined ? { title: patch.title } : {}),
+            ...(patch.duration_s !== undefined ? { duration_s: patch.duration_s } : {}),
+          }));
+          if (patch.duration_s !== undefined) {
+            next = reindexAndRetotal(next);
+          }
+          return { project: next };
+        }),
+
+      addClipSection: (afterSectionId) =>
+        set((state) => {
+          const sections = [...state.project.sections];
+          const insertAt =
+            afterSectionId == null
+              ? sections.length
+              : Math.max(0, sections.findIndex((s) => s.id === afterSectionId) + 1);
+          const section = buildClipSection(insertAt + 1);
+          sections.splice(insertAt, 0, section);
+          let next = reindexAndRetotal({ ...state.project, sections });
+          next = reconcileTransitions(next);
+          return { project: touch(next), activeSectionId: section.id };
+        }),
+
+      addTitleSection: (afterSectionId) =>
+        set((state) => {
+          const sections = [...state.project.sections];
+          const insertAt =
+            afterSectionId == null
+              ? sections.length
+              : Math.max(0, sections.findIndex((s) => s.id === afterSectionId) + 1);
+          const section = buildTitleSection(insertAt + 1);
+          sections.splice(insertAt, 0, section);
+          let next = reindexAndRetotal({ ...state.project, sections });
+          next = reconcileTransitions(next);
+          return { project: touch(next), activeSectionId: section.id };
+        }),
+
+      removeSection: (sectionId) =>
+        set((state) => {
+          const sections = state.project.sections.filter((s) => s.id !== sectionId);
+          if (sections.length === 0) return state;
+          let next = reindexAndRetotal({ ...state.project, sections });
+          next = reconcileTransitions(next);
+          const nextActive =
+            state.activeSectionId === sectionId ? sections[0]?.id ?? null : state.activeSectionId;
+          return { project: touch(next), activeSectionId: nextActive };
+        }),
 
       updateStill: (sectionId, stillId, patch) =>
         set((state) => ({
@@ -168,6 +353,179 @@ export const useStore = create<StoreState>()(
               versions: next,
               active_version_id: refDeleted ? (next[0]?.id ?? null) : s.active_version_id,
             };
+          }),
+        })),
+
+      updateTitleVersion: (sectionId, versionId, patch) =>
+        set((state) => ({
+          project: mapSection(state.project, sectionId, (s) => ({
+            ...s,
+            versions: s.versions.map((v) => {
+              if (v.id !== versionId || v.kind !== "title") return v;
+              return {
+                ...v,
+                ...(patch.label !== undefined ? { label: patch.label } : {}),
+                ...(patch.text !== undefined ? { text: patch.text } : {}),
+                ...(patch.style_ref !== undefined ? { style_ref: patch.style_ref } : {}),
+                ...(patch.output_url !== undefined ? { output_url: patch.output_url } : {}),
+              };
+            }),
+          })),
+        })),
+
+      addTitleVersion: (sectionId) =>
+        set((state) => {
+          const section = state.project.sections.find((s) => s.id === sectionId);
+          if (!section || section.type !== "title") return state;
+          const seed = section.versions.find((v) => v.id === section.active_version_id);
+          const seedT = seed && seed.kind === "title" ? seed : null;
+          const version: TitleVersion = {
+            id: newId("ver"),
+            kind: "title",
+            label: "new version",
+            text: seedT?.text ?? "Title text",
+            style_ref: seedT?.style_ref ?? null,
+          };
+          return {
+            project: mapSection(state.project, sectionId, (s) => ({
+              ...s,
+              versions: [...s.versions, version],
+              active_version_id: version.id,
+            })),
+          };
+        }),
+
+      removeTitleVersion: (sectionId, versionId) =>
+        set((state) => ({
+          project: mapSection(state.project, sectionId, (s) => {
+            const next = s.versions.filter((v) => v.id !== versionId);
+            const refDeleted = s.active_version_id === versionId;
+            return {
+              ...s,
+              versions: next,
+              active_version_id: refDeleted ? (next[0]?.id ?? null) : s.active_version_id,
+            };
+          }),
+        })),
+
+      updateTransition: (transitionId, patch) =>
+        set((state) => ({
+          project: touch({
+            ...state.project,
+            transitions: state.project.transitions.map((t) =>
+              t.id === transitionId
+                ? {
+                    ...t,
+                    ...(patch.type !== undefined ? { type: patch.type } : {}),
+                    ...(patch.duration_s !== undefined ? { duration_s: patch.duration_s } : {}),
+                  }
+                : t,
+            ),
+          }),
+        })),
+
+      updateBrief: (patch) =>
+        set((state) => {
+          const current = state.project.brief ?? {
+            id: newId("brief"),
+            name: "Untitled brief",
+            visual: "",
+          };
+          return {
+            project: touch({
+              ...state.project,
+              brief: { ...current, ...patch },
+            }),
+          };
+        }),
+
+      updateGrade: (patch) =>
+        set((state) => {
+          const current = state.project.grade ?? {
+            id: newId("grade"),
+            name: "Untitled grade",
+            adjustments: {},
+          };
+          return {
+            project: touch({
+              ...state.project,
+              grade: {
+                ...current,
+                ...patch,
+                ...(patch.adjustments
+                  ? { adjustments: { ...current.adjustments, ...patch.adjustments } }
+                  : {}),
+              },
+            }),
+          };
+        }),
+
+      updateMusic: (patch) =>
+        set((state) => {
+          const current = state.project.music_track ?? {
+            id: newId("music"),
+            name: "Untitled music",
+            prompt: "",
+            model: "elevenlabs-music",
+          };
+          return {
+            project: touch({
+              ...state.project,
+              music_track: { ...current, ...patch },
+            }),
+          };
+        }),
+
+      updateTitleStyle: (patch) =>
+        set((state) => {
+          const current = state.project.title_settings ?? {
+            id: newId("titlestyle"),
+            name: "Untitled title style",
+            font: "JetBrains Mono Bold",
+            color: "#f4f1ea",
+            background_color: "#0a0908",
+          };
+          return {
+            project: touch({
+              ...state.project,
+              title_settings: { ...current, ...patch },
+            }),
+          };
+        }),
+
+      addVOSegment: () =>
+        set((state) => {
+          const last = state.project.vo_segments[state.project.vo_segments.length - 1];
+          const start_s = last ? Math.min(state.project.duration_s, last.start_s + last.duration_s) : 0;
+          const remaining = Math.max(1, state.project.duration_s - start_s);
+          const seg: VOSegment = {
+            id: newId("vo"),
+            text: "New line",
+            voice: "default",
+            start_s,
+            duration_s: Math.min(3, remaining),
+          };
+          return {
+            project: touch({
+              ...state.project,
+              vo_segments: [...state.project.vo_segments, seg],
+            }),
+          };
+        }),
+
+      updateVOSegment: (id, patch) =>
+        set((state) => ({
+          project: touch({
+            ...state.project,
+            vo_segments: state.project.vo_segments.map((v) => (v.id === id ? { ...v, ...patch } : v)),
+          }),
+        })),
+
+      removeVOSegment: (id) =>
+        set((state) => ({
+          project: touch({
+            ...state.project,
+            vo_segments: state.project.vo_segments.filter((v) => v.id !== id),
           }),
         })),
     }),

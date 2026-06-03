@@ -1,8 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { selectActiveSection, useStore } from "@/lib/store";
-import type { Project, Section } from "@/lib/types";
+import type {
+  Aspect,
+  Project,
+  Section,
+  Transition,
+  TransitionType,
+  Version,
+} from "@/lib/types";
 import { downloadProjectJSON, pickProjectJSONFile } from "@/lib/serialize";
 import {
   DURATION_OPTIONS_S,
@@ -14,6 +29,10 @@ import {
   motionModelCost,
 } from "@/lib/models";
 import { kenBurnsFromPrompt, newSeed, pollinationsUrl } from "@/lib/generate";
+
+const ASPECT_OPTIONS: Aspect[] = ["9:16", "16:9", "1:1"];
+
+const SECTION_DURATION_OPTIONS_S = [1, 2, 3, 4, 5, 6, 8, 10];
 
 function formatTimecode(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -27,16 +46,160 @@ function formatTransition(type: string, duration: number): string {
   return `Crossfade ${duration.toFixed(1)}s`;
 }
 
-function formatInputRef(ref: string | null | undefined): string {
-  if (!ref) return "none";
-  const m = ref.match(/^section:section_(\d+):last_frame$/);
-  if (m) return `${m[1]} last frame`;
-  return ref;
-}
-
 function formatCost(c: number): string {
   return c >= 1 ? `~ $${c.toFixed(2)}` : `~ $${c.toFixed(3)}`;
 }
+
+/* ───────────── PRIMITIVES ───────────── */
+
+function useClickOutside<T extends HTMLElement>(onClose: () => void) {
+  const ref = useRef<T | null>(null);
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (!ref.current) return;
+      if (ref.current.contains(e.target as Node)) return;
+      onClose();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+  return ref;
+}
+
+function Popover({
+  open,
+  onClose,
+  children,
+  className = "",
+  style,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const ref = useClickOutside<HTMLDivElement>(onClose);
+  if (!open) return null;
+  return (
+    <div ref={ref} className={`popover ${className}`} style={style} role="dialog">
+      {children}
+    </div>
+  );
+}
+
+type InlineTextProps = {
+  value: string;
+  onCommit: (next: string) => void;
+  placeholder?: string;
+  className?: string;
+  multiline?: boolean;
+  ariaLabel?: string;
+  emptyLabel?: string;
+};
+
+function InlineText({
+  value,
+  onCommit,
+  placeholder,
+  className = "",
+  multiline = false,
+  ariaLabel,
+  emptyLabel,
+}: InlineTextProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    if (!editing) setDraft(value);
+  }, [value, editing]);
+
+  const commit = () => {
+    setEditing(false);
+    if (draft !== value) onCommit(draft);
+  };
+  const cancel = () => {
+    setEditing(false);
+    setDraft(value);
+  };
+
+  if (editing) {
+    if (multiline) {
+      return (
+        <textarea
+          autoFocus
+          className={`inline-edit ${className}`}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              cancel();
+            }
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              commit();
+            }
+          }}
+          rows={3}
+          aria-label={ariaLabel}
+        />
+      );
+    }
+    return (
+      <input
+        autoFocus
+        type="text"
+        className={`inline-edit ${className}`}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          }
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          }
+        }}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+      />
+    );
+  }
+
+  const isEmpty = value.trim() === "";
+  return (
+    <span
+      className={`inline-edit-display ${isEmpty ? "empty" : ""} ${className}`}
+      role="button"
+      tabIndex={0}
+      onClick={() => setEditing(true)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setEditing(true);
+        }
+      }}
+      aria-label={ariaLabel}
+      title="Click to edit"
+    >
+      {isEmpty ? emptyLabel ?? placeholder ?? "—" : value}
+    </span>
+  );
+}
+
+/* ───────────── PAGE ───────────── */
 
 export default function HomePage() {
   const project = useStore((s) => s.project);
@@ -44,21 +207,38 @@ export default function HomePage() {
   const activeSection = useStore(selectActiveSection);
   const setActiveSection = useStore((s) => s.setActiveSection);
   const setProject = useStore((s) => s.setProject);
+  const updateProjectMeta = useStore((s) => s.updateProjectMeta);
+  const addClipSection = useStore((s) => s.addClipSection);
+  const addTitleSection = useStore((s) => s.addTitleSection);
+  const removeSection = useStore((s) => s.removeSection);
+  const updateTransition = useStore((s) => s.updateTransition);
+  const addVOSegment = useStore((s) => s.addVOSegment);
+  const updateVOSegment = useStore((s) => s.updateVOSegment);
+  const removeVOSegment = useStore((s) => s.removeVOSegment);
+  const updateBrief = useStore((s) => s.updateBrief);
+  const updateGrade = useStore((s) => s.updateGrade);
+  const updateMusic = useStore((s) => s.updateMusic);
+  const updateTitleStyle = useStore((s) => s.updateTitleStyle);
 
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     Promise.resolve(useStore.persist.rehydrate()).finally(() => setHydrated(true));
   }, []);
 
+  const [aspectMenuOpen, setAspectMenuOpen] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [editingTransitionId, setEditingTransitionId] = useState<string | null>(null);
+  const [editingVOId, setEditingVOId] = useState<string | null>(null);
+  const [lookOpen, setLookOpen] = useState<null | "brief" | "grade" | "music" | "title">(null);
+
   const transitionsByTo = useMemo(() => {
-    const m = new Map<string, { label: string; type: string }>();
-    for (const t of project.transitions) {
-      m.set(t.to_section_id, { label: formatTransition(t.type, t.duration_s), type: t.type });
-    }
+    const m = new Map<string, Transition>();
+    for (const t of project.transitions) m.set(t.to_section_id, t);
     return m;
   }, [project.transitions]);
 
   const clipsCount = project.sections.length;
+  const totalCols = Math.max(1, clipsCount);
 
   const handleExport = () => downloadProjectJSON(project);
   const handleImport = async () => {
@@ -89,10 +269,41 @@ export default function HomePage() {
 
       <div className="project-head">
         <div className="project-meta">
-          <h1><span className="slash">//</span> {project.name}</h1>
+          <h1>
+            <span className="slash">//</span>{" "}
+            <InlineText
+              value={project.name}
+              onCommit={(name) => updateProjectMeta({ name })}
+              ariaLabel="Project name"
+              placeholder="Untitled project"
+            />
+          </h1>
           <div className="specs">
             <span>{project.duration_s.toFixed(1)}s</span>
-            <span>{project.aspect.replace(":", " : ")}</span>
+            <span className="popover-anchor">
+              <button
+                type="button"
+                className="spec-pick"
+                onClick={() => setAspectMenuOpen((o) => !o)}
+              >
+                {project.aspect.replace(":", " : ")} <span className="caret">▾</span>
+              </button>
+              <Popover open={aspectMenuOpen} onClose={() => setAspectMenuOpen(false)} className="menu">
+                {ASPECT_OPTIONS.map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    className={`menu-item ${a === project.aspect ? "active" : ""}`}
+                    onClick={() => {
+                      updateProjectMeta({ aspect: a });
+                      setAspectMenuOpen(false);
+                    }}
+                  >
+                    {a.replace(":", " : ")}
+                  </button>
+                ))}
+              </Popover>
+            </span>
             <span>{clipsCount} clips</span>
             <span>v{project.revision} / {project.status}</span>
           </div>
@@ -106,22 +317,54 @@ export default function HomePage() {
       </div>
 
       <div className="lookbar">
-        <div className="slot">
-          <div className="label">// BRIEF</div>
-          <div className="value">{project.brief?.name ?? "—"} <span className="caret">▾</span></div>
-        </div>
-        <div className="slot">
-          <div className="label">// GRADE</div>
-          <div className="value">{project.grade?.name ?? "—"} <span className="caret">▾</span></div>
-        </div>
-        <div className="slot">
-          <div className="label">// MUSIC</div>
-          <div className="value">{project.music_track?.name ?? "—"} <span className="caret">▾</span></div>
-        </div>
-        <div className="slot">
-          <div className="label">// TITLE STYLE</div>
-          <div className="value">{project.title_settings?.name ?? "—"} <span className="caret">▾</span></div>
-        </div>
+        <LookSlot
+          label="// BRIEF"
+          value={project.brief?.name}
+          open={lookOpen === "brief"}
+          onToggle={() => setLookOpen(lookOpen === "brief" ? null : "brief")}
+        >
+          <BriefEditor
+            brief={project.brief}
+            onChange={updateBrief}
+            onClose={() => setLookOpen(null)}
+          />
+        </LookSlot>
+        <LookSlot
+          label="// GRADE"
+          value={project.grade?.name}
+          open={lookOpen === "grade"}
+          onToggle={() => setLookOpen(lookOpen === "grade" ? null : "grade")}
+        >
+          <GradeEditor
+            grade={project.grade}
+            onChange={updateGrade}
+            onClose={() => setLookOpen(null)}
+          />
+        </LookSlot>
+        <LookSlot
+          label="// MUSIC"
+          value={project.music_track?.name}
+          open={lookOpen === "music"}
+          onToggle={() => setLookOpen(lookOpen === "music" ? null : "music")}
+        >
+          <MusicEditor
+            music={project.music_track}
+            onChange={updateMusic}
+            onClose={() => setLookOpen(null)}
+          />
+        </LookSlot>
+        <LookSlot
+          label="// TITLE STYLE"
+          value={project.title_settings?.name}
+          open={lookOpen === "title"}
+          onToggle={() => setLookOpen(lookOpen === "title" ? null : "title")}
+        >
+          <TitleStyleEditor
+            style={project.title_settings}
+            onChange={updateTitleStyle}
+            onClose={() => setLookOpen(null)}
+          />
+        </LookSlot>
       </div>
 
       <div className="timeline-wrap">
@@ -130,13 +373,23 @@ export default function HomePage() {
           <span>Click a clip to open the flow · Click ◇ to set transitions</span>
         </div>
 
-        <div className="ruler">
+        <div
+          className="ruler"
+          style={{ gridTemplateColumns: `repeat(${totalCols}, 1fr)` }}
+        >
           {Array.from({ length: clipsCount }, (_, i) => (
-            <span key={i}>{formatTimecode(i * 3)}</span>
+            <span key={i}>
+              {formatTimecode(
+                project.sections.slice(0, i).reduce((a, s) => a + s.duration_s, 0),
+              )}
+            </span>
           ))}
         </div>
 
-        <div className="clips-row">
+        <div
+          className="clips-row"
+          style={{ gridTemplateColumns: `repeat(${totalCols}, 1fr)` }}
+        >
           {project.sections.map((section) => {
             const isActive = section.id === activeSectionId;
             const versionIdx = section.versions.findIndex((v) => v.id === section.active_version_id);
@@ -150,56 +403,179 @@ export default function HomePage() {
                 onClick={() => setActiveSection(section.id)}
               >
                 {trans ? (
-                  <div
-                    className="trans-marker"
-                    data-type={trans.type === "crossfade" || trans.type === "fade_black" ? "fade" : undefined}
-                    title={trans.label}
-                  >
-                    ◇
-                  </div>
+                  <span className="popover-anchor">
+                    <button
+                      type="button"
+                      className="trans-marker"
+                      data-type={
+                        trans.type === "crossfade" || trans.type === "fade_black"
+                          ? "fade"
+                          : undefined
+                      }
+                      title={formatTransition(trans.type, trans.duration_s)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingTransitionId(
+                          editingTransitionId === trans.id ? null : trans.id,
+                        );
+                      }}
+                    >
+                      ◇
+                    </button>
+                    <Popover
+                      open={editingTransitionId === trans.id}
+                      onClose={() => setEditingTransitionId(null)}
+                      className="trans-popover"
+                    >
+                      <TransitionEditor
+                        transition={trans}
+                        onChange={(patch) => updateTransition(trans.id, patch)}
+                      />
+                    </Popover>
+                  </span>
                 ) : null}
-                <div className="clip-num">{section.index.toString().padStart(2, "0")} // {section.type.toUpperCase()}</div>
+                <div className="clip-num">
+                  {section.index.toString().padStart(2, "0")} // {section.type.toUpperCase()}
+                </div>
                 <div className="clip-title">{section.title}</div>
                 <div className="clip-meta">
                   <span className="clip-version">{versionLabel}</span>
                   <span className="clip-dur">{section.duration_s.toFixed(1)}s</span>
                 </div>
+                <button
+                  type="button"
+                  className="clip-remove"
+                  title="Remove section"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeSection(section.id);
+                  }}
+                >
+                  ✕
+                </button>
               </div>
             );
           })}
         </div>
 
-        <div className="audio-row" style={{ marginTop: 14 }}>
+        <div className="timeline-add-row">
+          <span className="popover-anchor">
+            <button
+              type="button"
+              className="timeline-add"
+              onClick={() => setAddMenuOpen((o) => !o)}
+            >
+              + Add section
+            </button>
+            <Popover open={addMenuOpen} onClose={() => setAddMenuOpen(false)} className="menu">
+              <button
+                type="button"
+                className="menu-item"
+                onClick={() => {
+                  addClipSection(null);
+                  setAddMenuOpen(false);
+                }}
+              >
+                Clip
+              </button>
+              <button
+                type="button"
+                className="menu-item"
+                onClick={() => {
+                  addTitleSection(null);
+                  setAddMenuOpen(false);
+                }}
+              >
+                Title card
+              </button>
+            </Popover>
+          </span>
+        </div>
+
+        <div
+          className="audio-row"
+          style={{ marginTop: 14, gridTemplateColumns: `repeat(${totalCols}, 1fr)` }}
+        >
           <div className="track-label">VO</div>
           {project.vo_segments.map((seg, i) => {
-            const startCol = Math.floor(seg.start_s / 3) + 1;
-            const endCol = startCol + Math.max(1, Math.round(seg.duration_s / 3));
+            const startCol =
+              Math.floor((seg.start_s / project.duration_s) * totalCols) + 1;
+            const endCol = Math.max(
+              startCol + 1,
+              startCol + Math.max(1, Math.round((seg.duration_s / project.duration_s) * totalCols)),
+            );
             return (
-              <div key={seg.id} className="vo-seg" style={{ gridColumn: `${startCol} / ${endCol}` }}>
-                v{i + 1} — <span className="vo-text">&ldquo;{seg.text}&rdquo;</span>
-              </div>
+              <span
+                key={seg.id}
+                className="popover-anchor"
+                style={{ gridColumn: `${startCol} / ${Math.min(totalCols + 1, endCol)}` }}
+              >
+                <button
+                  type="button"
+                  className="vo-seg"
+                  onClick={() =>
+                    setEditingVOId(editingVOId === seg.id ? null : seg.id)
+                  }
+                >
+                  v{i + 1} — <span className="vo-text">&ldquo;{seg.text}&rdquo;</span>
+                </button>
+                <Popover
+                  open={editingVOId === seg.id}
+                  onClose={() => setEditingVOId(null)}
+                  className="vo-popover"
+                >
+                  <VOSegmentEditor
+                    segment={seg}
+                    projectDuration={project.duration_s}
+                    onChange={(patch) => updateVOSegment(seg.id, patch)}
+                    onRemove={() => {
+                      removeVOSegment(seg.id);
+                      setEditingVOId(null);
+                    }}
+                  />
+                </Popover>
+              </span>
             );
           })}
-          <div className="vo-seg" style={{ gridColumn: "5 / 7", opacity: 0.5 }}>— pending</div>
+          <button
+            type="button"
+            className="vo-seg vo-add"
+            style={{ gridColumn: `${totalCols} / ${totalCols + 1}` }}
+            onClick={addVOSegment}
+            title="Add VO segment"
+          >
+            + VO
+          </button>
         </div>
 
         <div className="audio-row" style={{ marginTop: 8 }}>
           <div className="track-label">MUSIC</div>
-          <div className="music-bed">
+          <button
+            type="button"
+            className="music-bed"
+            onClick={() => setLookOpen("music")}
+          >
             <span>
-              <strong>{project.music_track?.name ?? "—"}</strong> · {project.music_track?.model ?? "—"} · v1 · {project.duration_s.toFixed(1)}s · auto-ducks under VO −6dB
+              <strong>{project.music_track?.name ?? "—"}</strong> ·{" "}
+              {project.music_track?.model ?? "—"} · v1 · {project.duration_s.toFixed(1)}s · auto-ducks under VO −6dB
             </span>
             <span>♪ ▾</span>
-          </div>
+          </button>
         </div>
 
         <div className="audio-row" style={{ marginTop: 12 }}>
-          <div className="grade-strip">
+          <button
+            type="button"
+            className="grade-strip"
+            onClick={() => setLookOpen("grade")}
+          >
             <span>
-              Final pass · <strong>{project.grade?.name ?? "—"}</strong> · exposure +{project.grade?.adjustments.exposure} · contrast +{project.grade?.adjustments.contrast} · warm mids · crushed blacks · teal shadow
+              Final pass · <strong>{project.grade?.name ?? "—"}</strong> · exposure +
+              {String(project.grade?.adjustments.exposure ?? 0)} · contrast +
+              {String(project.grade?.adjustments.contrast ?? 0)} · warm mids · crushed blacks · teal shadow
             </span>
             <span>⤓ EXPORT LUT</span>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -213,6 +589,440 @@ export default function HomePage() {
   );
 }
 
+/* ───────────── LOOK SLOTS ───────────── */
+
+function LookSlot({
+  label,
+  value,
+  open,
+  onToggle,
+  children,
+}: {
+  label: string;
+  value?: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="slot popover-anchor">
+      <button type="button" className="slot-btn" onClick={onToggle}>
+        <span className="label">{label}</span>
+        <span className="value">
+          {value ?? "—"} <span className="caret">▾</span>
+        </span>
+      </button>
+      <Popover open={open} onClose={onToggle} className="look-popover">
+        {children}
+      </Popover>
+    </div>
+  );
+}
+
+function BriefEditor({
+  brief,
+  onChange,
+  onClose,
+}: {
+  brief: Project["brief"];
+  onChange: (patch: Partial<NonNullable<Project["brief"]>>) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="editor">
+      <div className="editor-head">
+        <span>// BRIEF</span>
+        <button type="button" className="btn ghost" onClick={onClose}>✕</button>
+      </div>
+      <Field label="Name">
+        <input
+          className="field-input"
+          value={brief?.name ?? ""}
+          onChange={(e) => onChange({ name: e.target.value })}
+          placeholder="Brief name"
+        />
+      </Field>
+      <Field label="Visual">
+        <textarea
+          rows={3}
+          className="field-input tall"
+          value={brief?.visual ?? ""}
+          onChange={(e) => onChange({ visual: e.target.value })}
+          placeholder="warm 35mm hero, photoreal, golden hour..."
+        />
+      </Field>
+      <div className="field-row">
+        <Field label="Lighting">
+          <input
+            className="field-input"
+            value={brief?.lighting ?? ""}
+            onChange={(e) => onChange({ lighting: e.target.value })}
+            placeholder="soft side light"
+          />
+        </Field>
+        <Field label="Camera">
+          <input
+            className="field-input"
+            value={brief?.camera ?? ""}
+            onChange={(e) => onChange({ camera: e.target.value })}
+            placeholder="35mm, shallow focus"
+          />
+        </Field>
+      </div>
+      <div className="field-row">
+        <Field label="Palette">
+          <input
+            className="field-input"
+            value={brief?.palette ?? ""}
+            onChange={(e) => onChange({ palette: e.target.value })}
+            placeholder="warm, golden"
+          />
+        </Field>
+        <Field label="Subject">
+          <input
+            className="field-input"
+            value={brief?.subject ?? ""}
+            onChange={(e) => onChange({ subject: e.target.value })}
+            placeholder="hero product"
+          />
+        </Field>
+      </div>
+      <Field label="Avoid">
+        <input
+          className="field-input"
+          value={brief?.avoid ?? ""}
+          onChange={(e) => onChange({ avoid: e.target.value })}
+          placeholder="no logos, no text"
+        />
+      </Field>
+    </div>
+  );
+}
+
+function GradeEditor({
+  grade,
+  onChange,
+  onClose,
+}: {
+  grade: Project["grade"];
+  onChange: (patch: Partial<NonNullable<Project["grade"]>>) => void;
+  onClose: () => void;
+}) {
+  const adj = grade?.adjustments ?? {};
+  const setAdjustment = (key: string, value: number | string) =>
+    onChange({ adjustments: { ...adj, [key]: value } });
+  const exposureValue = typeof adj.exposure === "number" ? adj.exposure : 0;
+  const contrastValue = typeof adj.contrast === "number" ? adj.contrast : 0;
+  return (
+    <div className="editor">
+      <div className="editor-head">
+        <span>// GRADE</span>
+        <button type="button" className="btn ghost" onClick={onClose}>✕</button>
+      </div>
+      <Field label="Name">
+        <input
+          className="field-input"
+          value={grade?.name ?? ""}
+          onChange={(e) => onChange({ name: e.target.value })}
+          placeholder="Warm Cinematic"
+        />
+      </Field>
+      <div className="field-row">
+        <Field label={`Exposure ${exposureValue > 0 ? "+" : ""}${exposureValue.toFixed(2)}`}>
+          <input
+            type="range"
+            min={-1}
+            max={1}
+            step={0.05}
+            value={exposureValue}
+            onChange={(e) => setAdjustment("exposure", Number(e.target.value))}
+          />
+        </Field>
+        <Field label={`Contrast ${contrastValue > 0 ? "+" : ""}${contrastValue.toFixed(0)}`}>
+          <input
+            type="range"
+            min={-50}
+            max={50}
+            step={1}
+            value={contrastValue}
+            onChange={(e) => setAdjustment("contrast", Number(e.target.value))}
+          />
+        </Field>
+      </div>
+      <div className="field-row">
+        <Field label="Mids">
+          <select
+            className="field-input"
+            value={typeof adj.mids === "string" ? adj.mids : "neutral"}
+            onChange={(e) => setAdjustment("mids", e.target.value)}
+          >
+            <option value="neutral">neutral</option>
+            <option value="warm">warm</option>
+            <option value="cool">cool</option>
+          </select>
+        </Field>
+        <Field label="Blacks">
+          <select
+            className="field-input"
+            value={typeof adj.blacks === "string" ? adj.blacks : "neutral"}
+            onChange={(e) => setAdjustment("blacks", e.target.value)}
+          >
+            <option value="neutral">neutral</option>
+            <option value="crushed">crushed</option>
+            <option value="lifted">lifted</option>
+          </select>
+        </Field>
+        <Field label="Shadow tint">
+          <select
+            className="field-input"
+            value={typeof adj.shadow_tint === "string" ? adj.shadow_tint : "neutral"}
+            onChange={(e) => setAdjustment("shadow_tint", e.target.value)}
+          >
+            <option value="neutral">neutral</option>
+            <option value="teal">teal</option>
+            <option value="warm">warm</option>
+            <option value="violet">violet</option>
+          </select>
+        </Field>
+      </div>
+    </div>
+  );
+}
+
+function MusicEditor({
+  music,
+  onChange,
+  onClose,
+}: {
+  music: Project["music_track"];
+  onChange: (patch: Partial<NonNullable<Project["music_track"]>>) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="editor">
+      <div className="editor-head">
+        <span>// MUSIC</span>
+        <button type="button" className="btn ghost" onClick={onClose}>✕</button>
+      </div>
+      <Field label="Name">
+        <input
+          className="field-input"
+          value={music?.name ?? ""}
+          onChange={(e) => onChange({ name: e.target.value })}
+          placeholder="Cinematic Build"
+        />
+      </Field>
+      <Field label="Model">
+        <select
+          className="field-input"
+          value={music?.model ?? "elevenlabs-music"}
+          onChange={(e) => onChange({ model: e.target.value })}
+        >
+          <option value="elevenlabs-music">ElevenLabs Music</option>
+          <option value="stable-audio">Stable Audio</option>
+          <option value="suno">Suno</option>
+        </select>
+      </Field>
+      <Field label="Prompt">
+        <textarea
+          rows={3}
+          className="field-input tall"
+          value={music?.prompt ?? ""}
+          onChange={(e) => onChange({ prompt: e.target.value })}
+          placeholder="slow cinematic build, low piano, distant strings, no drums"
+        />
+      </Field>
+    </div>
+  );
+}
+
+function TitleStyleEditor({
+  style,
+  onChange,
+  onClose,
+}: {
+  style: Project["title_settings"];
+  onChange: (patch: Partial<NonNullable<Project["title_settings"]>>) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="editor">
+      <div className="editor-head">
+        <span>// TITLE STYLE</span>
+        <button type="button" className="btn ghost" onClick={onClose}>✕</button>
+      </div>
+      <Field label="Name">
+        <input
+          className="field-input"
+          value={style?.name ?? ""}
+          onChange={(e) => onChange({ name: e.target.value })}
+          placeholder="BFS Mono — Bone"
+        />
+      </Field>
+      <Field label="Font">
+        <input
+          className="field-input"
+          value={style?.font ?? ""}
+          onChange={(e) => onChange({ font: e.target.value })}
+          placeholder="JetBrains Mono Bold"
+        />
+      </Field>
+      <div className="field-row">
+        <Field label="Color">
+          <input
+            type="color"
+            className="field-input color-input"
+            value={style?.color ?? "#f4f1ea"}
+            onChange={(e) => onChange({ color: e.target.value })}
+          />
+        </Field>
+        <Field label="Background">
+          <input
+            type="color"
+            className="field-input color-input"
+            value={style?.background_color ?? "#0a0908"}
+            onChange={(e) => onChange({ background_color: e.target.value })}
+          />
+        </Field>
+      </div>
+      <div className="title-preview" style={{
+        background: style?.background_color ?? "#0a0908",
+        color: style?.color ?? "#f4f1ea",
+        fontFamily: style?.font ?? "var(--font-mono)",
+      }}>
+        Title preview
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="field">
+      <div className="field-label">{label}</div>
+      {children}
+    </div>
+  );
+}
+
+/* ───────────── TRANSITION + VO EDITORS ───────────── */
+
+function TransitionEditor({
+  transition,
+  onChange,
+}: {
+  transition: Transition;
+  onChange: (patch: { type?: TransitionType; duration_s?: number }) => void;
+}) {
+  const options: { id: TransitionType; label: string }[] = [
+    { id: "cut", label: "Cut" },
+    { id: "crossfade", label: "Crossfade" },
+    { id: "fade_black", label: "Fade to black" },
+  ];
+  return (
+    <div className="editor compact">
+      <div className="editor-head">
+        <span>// TRANSITION</span>
+      </div>
+      <div className="trans-options">
+        {options.map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            className={`trans-option ${transition.type === opt.id ? "active" : ""}`}
+            onClick={() =>
+              onChange({
+                type: opt.id,
+                duration_s: opt.id === "cut" ? 0 : Math.max(0.2, transition.duration_s || 0.4),
+              })
+            }
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      {transition.type !== "cut" ? (
+        <Field label={`Duration ${transition.duration_s.toFixed(1)}s`}>
+          <input
+            type="range"
+            min={0.2}
+            max={1.6}
+            step={0.1}
+            value={transition.duration_s}
+            onChange={(e) => onChange({ duration_s: Number(e.target.value) })}
+          />
+        </Field>
+      ) : null}
+    </div>
+  );
+}
+
+function VOSegmentEditor({
+  segment,
+  projectDuration,
+  onChange,
+  onRemove,
+}: {
+  segment: { id: string; text: string; voice: string; start_s: number; duration_s: number };
+  projectDuration: number;
+  onChange: (patch: Partial<{ text: string; voice: string; start_s: number; duration_s: number }>) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="editor compact">
+      <div className="editor-head">
+        <span>// VO</span>
+        <button type="button" className="btn ghost" onClick={onRemove}>✕ Remove</button>
+      </div>
+      <Field label="Text">
+        <textarea
+          rows={2}
+          className="field-input tall"
+          value={segment.text}
+          onChange={(e) => onChange({ text: e.target.value })}
+          placeholder="What the voice says"
+        />
+      </Field>
+      <div className="field-row">
+        <Field label="Voice">
+          <select
+            className="field-input"
+            value={segment.voice}
+            onChange={(e) => onChange({ voice: e.target.value })}
+          >
+            <option value="default">Default</option>
+            <option value="warm">Warm</option>
+            <option value="cool">Cool</option>
+            <option value="gravel">Gravel</option>
+          </select>
+        </Field>
+        <Field label={`Start ${segment.start_s.toFixed(1)}s`}>
+          <input
+            type="range"
+            min={0}
+            max={Math.max(0, projectDuration - 0.5)}
+            step={0.5}
+            value={segment.start_s}
+            onChange={(e) => onChange({ start_s: Number(e.target.value) })}
+          />
+        </Field>
+        <Field label={`Duration ${segment.duration_s.toFixed(1)}s`}>
+          <input
+            type="range"
+            min={0.5}
+            max={Math.max(0.5, projectDuration - segment.start_s)}
+            step={0.5}
+            value={segment.duration_s}
+            onChange={(e) => onChange({ duration_s: Number(e.target.value) })}
+          />
+        </Field>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────── FLOW PANEL ───────────── */
+
 function FlowPanel({ section, project }: { section: Section; project: Project }) {
   const setActiveSection = useStore((s) => s.setActiveSection);
   const setActiveVersion = useStore((s) => s.setActiveVersion);
@@ -223,10 +1033,22 @@ function FlowPanel({ section, project }: { section: Section; project: Project })
   const updateClipVersion = useStore((s) => s.updateClipVersion);
   const addClipVersion = useStore((s) => s.addClipVersion);
   const removeClipVersion = useStore((s) => s.removeClipVersion);
+  const updateTitleVersion = useStore((s) => s.updateTitleVersion);
+  const addTitleVersion = useStore((s) => s.addTitleVersion);
+  const removeTitleVersion = useStore((s) => s.removeTitleVersion);
+  const updateSection = useStore((s) => s.updateSection);
 
-  const startTime = (section.index - 1) * 3;
-  const activeVersion = section.versions.find((v) => v.id === section.active_version_id);
-  const activeStill = section.stills.find((s) => s.id === section.active_still_id);
+  const [versionMenuOpen, setVersionMenuOpen] = useState(false);
+  const [durationMenuOpen, setDurationMenuOpen] = useState(false);
+
+  const startTime = useMemo(
+    () =>
+      project.sections.slice(0, section.index - 1).reduce((a, s) => a + s.duration_s, 0),
+    [project.sections, section.index],
+  );
+
+  const activeVersion = section.versions.find((v) => v.id === section.active_version_id) ?? null;
+  const activeStill = section.stills.find((s) => s.id === section.active_still_id) ?? null;
 
   const priorClipSections = project.sections.filter(
     (s) => s.type === "clip" && s.index < section.index,
@@ -286,314 +1108,582 @@ function FlowPanel({ section, project }: { section: Section; project: Project })
 
   const motionStillUrl = motionDirection && referencedStill?.output_url ? referencedStill.output_url : null;
 
-  if (section.type === "title") {
-    return (
-      <div className="flow-panel">
-        <div className="flow-head">
-          <div className="title">
-            <span className="slash">//</span> {section.index.toString().padStart(2, "0")} — {section.title}
-            <span className="timecode">{formatTimecode(startTime)} — {formatTimecode(startTime + section.duration_s)}</span>
-          </div>
-          <div className="right">
-            <button type="button" className="btn ghost" onClick={() => setActiveSection(null)}>✕ Close</button>
-          </div>
-        </div>
-        <div className="flow-body" style={{ gridTemplateColumns: "1fr" }}>
-          <div className="stage" style={{ paddingLeft: 0, paddingRight: 0, borderRight: "none" }}>
-            <div className="stage-title"><span className="num">01</span>TITLE CARD</div>
-            <div className="field">
-              <div className="field-label">Text</div>
-              <div className="field-input tall">
-                {activeVersion && activeVersion.kind === "title" ? activeVersion.text : ""}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const stillCost = activeStill ? imageModelCost(activeStill.model) : 0;
-  const motionCost = activeVersion && activeVersion.kind === "clip"
-    ? motionModelCost(activeVersion.motion.model, activeVersion.motion.duration_s)
-    : 0;
+  const versionIdx = activeVersion ? section.versions.findIndex((v) => v.id === activeVersion.id) : -1;
 
   return (
     <div className="flow-panel">
       <div className="flow-head">
         <div className="title">
-          <span className="slash">//</span> {section.index.toString().padStart(2, "0")} — {section.title}
-          <span className="timecode">{formatTimecode(startTime)} — {formatTimecode(startTime + section.duration_s)}</span>
+          <span className="slash">//</span>{" "}
+          {section.index.toString().padStart(2, "0")} —{" "}
+          <InlineText
+            value={section.title}
+            onCommit={(title) => updateSection(section.id, { title })}
+            ariaLabel="Section title"
+            placeholder="Section name"
+          />
+          <span className="timecode">
+            {formatTimecode(startTime)} — {formatTimecode(startTime + section.duration_s)}
+          </span>
+          <span className="popover-anchor">
+            <button
+              type="button"
+              className="spec-pick small"
+              onClick={() => setDurationMenuOpen((o) => !o)}
+              title="Section duration"
+            >
+              {section.duration_s.toFixed(1)}s <span className="caret">▾</span>
+            </button>
+            <Popover
+              open={durationMenuOpen}
+              onClose={() => setDurationMenuOpen(false)}
+              className="menu"
+            >
+              {SECTION_DURATION_OPTIONS_S.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  className={`menu-item ${d === section.duration_s ? "active" : ""}`}
+                  onClick={() => {
+                    updateSection(section.id, { duration_s: d });
+                    setDurationMenuOpen(false);
+                  }}
+                >
+                  {d.toFixed(1)}s
+                </button>
+              ))}
+            </Popover>
+          </span>
         </div>
         <div className="right">
           {activeVersion ? (
-            <div className="version-dd">
-              <span>v{section.versions.findIndex((v) => v.id === activeVersion.id) + 1}</span>
-              <span>{activeVersion.label}</span>
-              <span className="caret">▾</span>
-            </div>
+            <span className="popover-anchor">
+              <button
+                type="button"
+                className="version-dd"
+                onClick={() => setVersionMenuOpen((o) => !o)}
+              >
+                <span>v{versionIdx + 1}</span>
+                <span>{activeVersion.label}</span>
+                <span className="caret">▾</span>
+              </button>
+              <Popover
+                open={versionMenuOpen}
+                onClose={() => setVersionMenuOpen(false)}
+                className="menu wide"
+              >
+                {section.versions.map((v, i) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    className={`menu-item ${v.id === activeVersion.id ? "active" : ""}`}
+                    onClick={() => {
+                      setActiveVersion(section.id, v.id);
+                      setVersionMenuOpen(false);
+                    }}
+                  >
+                    <span className="mi-tag">v{i + 1}</span> {v.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="menu-item add"
+                  onClick={() => {
+                    if (section.type === "clip") addClipVersion(section.id);
+                    else addTitleVersion(section.id);
+                    setVersionMenuOpen(false);
+                  }}
+                >
+                  + new version
+                </button>
+              </Popover>
+            </span>
           ) : null}
-          <button type="button" className="btn ghost" onClick={() => setActiveSection(null)}>✕ Close</button>
+          <button type="button" className="btn ghost" onClick={() => setActiveSection(null)}>
+            ✕ Close
+          </button>
         </div>
       </div>
 
-      <div className="flow-body">
-        {/* STAGE 1 — STILL */}
-        <div className="stage">
-          <div className="stage-title"><span className="num">01</span>STILL</div>
+      {section.type === "title" ? (
+        <TitleFlowBody
+          section={section}
+          activeVersion={activeVersion}
+          onChangeTitleVersion={(patch) =>
+            activeVersion && updateTitleVersion(section.id, activeVersion.id, patch)
+          }
+          onSelectVersion={(id) => setActiveVersion(section.id, id)}
+          onAddVersion={() => addTitleVersion(section.id)}
+          onRemoveVersion={(id) => removeTitleVersion(section.id, id)}
+          titleStyleName={project.title_settings?.name}
+        />
+      ) : (
+        <ClipFlowBody
+          section={section}
+          project={project}
+          activeStill={activeStill}
+          activeVersion={activeVersion && activeVersion.kind === "clip" ? activeVersion : null}
+          motionDirection={motionDirection}
+          motionStillUrl={motionStillUrl}
+          priorClipSections={priorClipSections}
+          onUpdateStill={(stillId, patch) => updateStill(section.id, stillId, patch)}
+          onAddStill={() => addStill(section.id)}
+          onRemoveStill={(stillId) => removeStill(section.id, stillId)}
+          onSelectStill={(stillId) => setActiveStill(section.id, stillId)}
+          onUpdateClipVersion={(versionId, patch) =>
+            updateClipVersion(section.id, versionId, patch)
+          }
+          onAddClipVersion={() => addClipVersion(section.id)}
+          onRemoveClipVersion={(versionId) => removeClipVersion(section.id, versionId)}
+          onSelectVersion={(versionId) => setActiveVersion(section.id, versionId)}
+          onGenerateStill={handleGenerateStill}
+          onGenerateMotion={handleGenerateMotion}
+        />
+      )}
+    </div>
+  );
+}
 
-          <div className="field">
-            <div className="field-label">Image prompt</div>
-            <textarea
-              className="field-input tall"
-              rows={3}
-              value={activeStill?.image_prompt ?? ""}
-              disabled={!activeStill}
-              placeholder={activeStill ? "" : "+ new still to start"}
-              onChange={(e) => activeStill && updateStill(section.id, activeStill.id, { image_prompt: e.target.value })}
-            />
-          </div>
+/* ───────────── TITLE FLOW BODY ───────────── */
 
-          <div className="field-row three">
-            <div className="field">
-              <div className="field-label">Model</div>
-              <div className="field-pill">
-                <select
-                  value={activeStill?.model ?? "flux-1.1-pro"}
-                  disabled={!activeStill}
-                  onChange={(e) => activeStill && updateStill(section.id, activeStill.id, { model: e.target.value })}
-                >
-                  {IMAGE_MODELS.map((m) => (
-                    <option key={m.id} value={m.id}>{m.label}</option>
-                  ))}
-                </select>
-                <span className="caret">▾</span>
+function TitleFlowBody({
+  section,
+  activeVersion,
+  onChangeTitleVersion,
+  onSelectVersion,
+  onAddVersion,
+  onRemoveVersion,
+  titleStyleName,
+}: {
+  section: Section;
+  activeVersion: Version | null;
+  onChangeTitleVersion: (patch: { label?: string; text?: string }) => void;
+  onSelectVersion: (id: string) => void;
+  onAddVersion: () => void;
+  onRemoveVersion: (id: string) => void;
+  titleStyleName?: string;
+}) {
+  const titleVersion = activeVersion && activeVersion.kind === "title" ? activeVersion : null;
+  return (
+    <div className="flow-body single">
+      <div className="stage full">
+        <div className="stage-title"><span className="num">01</span>TITLE CARD</div>
+        <Field label="Text">
+          <textarea
+            className="field-input tall"
+            rows={3}
+            value={titleVersion?.text ?? ""}
+            disabled={!titleVersion}
+            placeholder={titleVersion ? "Title text" : "+ new version to start"}
+            onChange={(e) => onChangeTitleVersion({ text: e.target.value })}
+          />
+        </Field>
+        <Field label="Version label">
+          <input
+            className="field-input"
+            value={titleVersion?.label ?? ""}
+            disabled={!titleVersion}
+            onChange={(e) => onChangeTitleVersion({ label: e.target.value })}
+            placeholder="default style"
+          />
+        </Field>
+        <Field label="Title style">
+          <div className="field-input read">{titleStyleName ?? "—"}</div>
+        </Field>
+
+        <div className="versions-list">
+          {section.versions.map((v, i) => {
+            const isActive = v.id === section.active_version_id;
+            const canRemove = section.versions.length > 1;
+            return (
+              <div
+                key={v.id}
+                className={`vrow${isActive ? " active" : ""}`}
+                onClick={() => onSelectVersion(v.id)}
+              >
+                <div className="vlabel">
+                  <span className="vid">v{i + 1}</span>
+                  <span className="vdesc">{v.label}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  {canRemove ? (
+                    <button
+                      type="button"
+                      className="vrow-remove"
+                      title="Remove version"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemoveVersion(v.id);
+                      }}
+                    >
+                      ✕
+                    </button>
+                  ) : null}
+                  <span className={`vmark ${isActive ? "active" : "muted"}`}>
+                    {isActive ? "●" : "↻"}
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className="field">
-              <div className="field-label">Input</div>
-              <div className="field-pill">
-                <select
-                  value={activeStill?.input_ref ?? ""}
-                  disabled={!activeStill}
-                  onChange={(e) => activeStill && updateStill(section.id, activeStill.id, { input_ref: e.target.value || null })}
-                >
-                  <option value="">none</option>
-                  {priorClipSections.map((s) => (
-                    <option key={s.id} value={`section:${s.id}:last_frame`}>
-                      {s.index.toString().padStart(2, "0")} last frame
-                    </option>
-                  ))}
-                </select>
-                <span className="caret">▾</span>
-              </div>
-            </div>
-            <div className="field">
-              <div className="field-label">Cost</div>
-              <div className="field-pill cost">{formatCost(stillCost)}</div>
-            </div>
-          </div>
-
-          <div className="preview-row">
-            <div className={`preview-box${activeStill?.output_url ? " has-image" : ""}`}>
-              {activeStill?.output_url ? (
-                <img
-                  key={activeStill.output_url}
-                  src={activeStill.output_url}
-                  alt={activeStill.label}
-                  className="preview-img"
-                />
-              ) : null}
-              {activeStill ? (
-                <span className="vbadge">s{section.stills.findIndex((s) => s.id === activeStill.id) + 1} · active</span>
-              ) : null}
-              <span className="play">▶︎</span>
-              <span className="time">still</span>
-            </div>
-            <div className="versions-list">
-              {section.stills.map((still, i) => {
-                const isActive = still.id === section.active_still_id;
-                const canRemove = section.stills.length > 1;
-                return (
-                  <div
-                    key={still.id}
-                    className={`vrow${isActive ? " active" : ""}`}
-                    onClick={() => setActiveStill(section.id, still.id)}
-                  >
-                    <div className="vlabel">
-                      <span className="vid">s{i + 1}</span>
-                      <span className="vdesc">{still.label}</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      {canRemove ? (
-                        <button
-                          type="button"
-                          className="vrow-remove"
-                          title="Remove still"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeStill(section.id, still.id);
-                          }}
-                        >
-                          ✕
-                        </button>
-                      ) : null}
-                      <span className={`vmark ${isActive ? "active" : "muted"}`}>{isActive ? "●" : "↻"}</span>
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="vrow add" onClick={() => addStill(section.id)}>+ new still</div>
-            </div>
-          </div>
-
-          <div className="gen-row">
-            <span className="gen-cost">{formatCost(stillCost)} per still</span>
-            <button type="button" className="btn primary" disabled={!activeStill} onClick={handleGenerateStill}>
-              ⏵ Generate still
-            </button>
-          </div>
-        </div>
-
-        {/* STAGE 2 — MOTION */}
-        <div className="stage">
-          <div className="stage-title"><span className="num">02</span>MOTION</div>
-
-          <div className="field">
-            <div className="field-label">Motion prompt</div>
-            <textarea
-              className="field-input tall"
-              rows={3}
-              value={activeVersion && activeVersion.kind === "clip" ? activeVersion.motion.prompt : ""}
-              disabled={!activeVersion || activeVersion.kind !== "clip"}
-              placeholder={activeVersion ? "" : "+ new version to start"}
-              onChange={(e) =>
-                activeVersion &&
-                activeVersion.kind === "clip" &&
-                updateClipVersion(section.id, activeVersion.id, { motion: { prompt: e.target.value } })
-              }
-            />
-          </div>
-
-          <div className="field-row three">
-            <div className="field">
-              <div className="field-label">Model</div>
-              <div className="field-pill">
-                <select
-                  value={activeVersion && activeVersion.kind === "clip" ? activeVersion.motion.model : "runway-gen4"}
-                  disabled={!activeVersion || activeVersion.kind !== "clip"}
-                  onChange={(e) =>
-                    activeVersion &&
-                    activeVersion.kind === "clip" &&
-                    updateClipVersion(section.id, activeVersion.id, { motion: { model: e.target.value } })
-                  }
-                >
-                  {MOTION_MODELS.map((m) => (
-                    <option key={m.id} value={m.id}>{m.label}</option>
-                  ))}
-                </select>
-                <span className="caret">▾</span>
-              </div>
-            </div>
-            <div className="field">
-              <div className="field-label">Duration</div>
-              <div className="field-pill">
-                <select
-                  value={activeVersion && activeVersion.kind === "clip" ? activeVersion.motion.duration_s : section.duration_s}
-                  disabled={!activeVersion || activeVersion.kind !== "clip"}
-                  onChange={(e) =>
-                    activeVersion &&
-                    activeVersion.kind === "clip" &&
-                    updateClipVersion(section.id, activeVersion.id, {
-                      motion: { duration_s: Number(e.target.value) },
-                    })
-                  }
-                >
-                  {DURATION_OPTIONS_S.map((d) => (
-                    <option key={d} value={d}>{d.toFixed(1)}s</option>
-                  ))}
-                </select>
-                <span className="caret">▾</span>
-              </div>
-            </div>
-            <div className="field">
-              <div className="field-label">Cost</div>
-              <div className="field-pill cost">{formatCost(motionCost)}</div>
-            </div>
-          </div>
-
-          <div className="preview-row">
-            <div className={`preview-box motion${motionStillUrl ? " has-image" : ""}`}>
-              {motionStillUrl ? (
-                <img
-                  key={`${motionStillUrl}|${motionDirection}|${activeVersion && activeVersion.kind === "clip" ? activeVersion.motion.duration_s : 0}`}
-                  src={motionStillUrl}
-                  alt="motion preview"
-                  className={`preview-img kb kb-${motionDirection}`}
-                  style={{
-                    animationDuration: `${
-                      activeVersion && activeVersion.kind === "clip" ? activeVersion.motion.duration_s : 3
-                    }s`,
-                  }}
-                />
-              ) : null}
-              {activeVersion ? (
-                <span className="vbadge">v{section.versions.findIndex((v) => v.id === activeVersion.id) + 1} · active</span>
-              ) : null}
-              <span className="play">▶︎</span>
-              <span className="time">0:00 / {activeVersion && activeVersion.kind === "clip" ? activeVersion.motion.duration_s.toFixed(1) : section.duration_s.toFixed(1)}</span>
-            </div>
-            <div className="versions-list">
-              {section.versions.map((v, i) => {
-                const isActive = v.id === section.active_version_id;
-                const canRemove = section.versions.length > 1;
-                return (
-                  <div
-                    key={v.id}
-                    className={`vrow${isActive ? " active" : ""}`}
-                    onClick={() => setActiveVersion(section.id, v.id)}
-                  >
-                    <div className="vlabel">
-                      <span className="vid">v{i + 1}</span>
-                      <span className="vdesc">{v.label}</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      {canRemove ? (
-                        <button
-                          type="button"
-                          className="vrow-remove"
-                          title="Remove version"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeClipVersion(section.id, v.id);
-                          }}
-                        >
-                          ✕
-                        </button>
-                      ) : null}
-                      <span className={`vmark ${isActive ? "active" : "muted"}`}>{isActive ? "●" : "↻"}</span>
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="vrow add" onClick={() => addClipVersion(section.id)}>+ new version</div>
-            </div>
-          </div>
-
-          <div className="gen-row">
-            <span className="gen-cost">{formatCost(motionCost)} per version</span>
-            <button
-              type="button"
-              className="btn primary"
-              disabled={!activeVersion}
-              onClick={handleGenerateMotion}
-            >
-              ⏵ Generate motion
-            </button>
-          </div>
+            );
+          })}
+          <div className="vrow add" onClick={onAddVersion}>+ new version</div>
         </div>
       </div>
     </div>
   );
 }
 
+/* ───────────── CLIP FLOW BODY ───────────── */
+
+type ClipFlowBodyProps = {
+  section: Section;
+  project: Project;
+  activeStill: NonNullable<Section["stills"][number]> | null;
+  activeVersion:
+    | (Section["versions"][number] & { kind: "clip" })
+    | null;
+  motionDirection: "in" | "out" | "left" | "right" | null;
+  motionStillUrl: string | null;
+  priorClipSections: Section[];
+  onUpdateStill: (
+    stillId: string,
+    patch: Partial<Omit<Section["stills"][number], "id">>,
+  ) => void;
+  onAddStill: () => void;
+  onRemoveStill: (stillId: string) => void;
+  onSelectStill: (stillId: string) => void;
+  onUpdateClipVersion: (
+    versionId: string,
+    patch: {
+      label?: string;
+      motion?: Partial<{ prompt: string; model: string; duration_s: number }>;
+      still_ref?: string | null;
+      output_url?: string;
+    },
+  ) => void;
+  onAddClipVersion: () => void;
+  onRemoveClipVersion: (versionId: string) => void;
+  onSelectVersion: (versionId: string) => void;
+  onGenerateStill: () => void;
+  onGenerateMotion: () => void;
+};
+
+function ClipFlowBody({
+  section,
+  project,
+  activeStill,
+  activeVersion,
+  motionDirection,
+  motionStillUrl,
+  priorClipSections,
+  onUpdateStill,
+  onAddStill,
+  onRemoveStill,
+  onSelectStill,
+  onUpdateClipVersion,
+  onAddClipVersion,
+  onRemoveClipVersion,
+  onSelectVersion,
+  onGenerateStill,
+  onGenerateMotion,
+}: ClipFlowBodyProps) {
+  const stillCost = activeStill ? imageModelCost(activeStill.model) : 0;
+  const motionCost = activeVersion
+    ? motionModelCost(activeVersion.motion.model, activeVersion.motion.duration_s)
+    : 0;
+
+  const updateStillLabel = useCallback(
+    (label: string) => activeStill && onUpdateStill(activeStill.id, { label }),
+    [activeStill, onUpdateStill],
+  );
+  const updateVersionLabel = useCallback(
+    (label: string) => activeVersion && onUpdateClipVersion(activeVersion.id, { label }),
+    [activeVersion, onUpdateClipVersion],
+  );
+
+  return (
+    <div className="flow-body">
+      {/* STAGE 1 — STILL */}
+      <div className="stage">
+        <div className="stage-title"><span className="num">01</span>STILL</div>
+
+        <Field label="Image prompt">
+          <textarea
+            className="field-input tall"
+            rows={3}
+            value={activeStill?.image_prompt ?? ""}
+            disabled={!activeStill}
+            placeholder={activeStill ? "" : "+ new still to start"}
+            onChange={(e) =>
+              activeStill && onUpdateStill(activeStill.id, { image_prompt: e.target.value })
+            }
+          />
+        </Field>
+
+        <Field label="Still label">
+          <input
+            className="field-input"
+            value={activeStill?.label ?? ""}
+            disabled={!activeStill}
+            onChange={(e) => updateStillLabel(e.target.value)}
+            placeholder="describe this still"
+          />
+        </Field>
+
+        <div className="field-row three">
+          <Field label="Model">
+            <div className="field-pill">
+              <select
+                value={activeStill?.model ?? "flux-1.1-pro"}
+                disabled={!activeStill}
+                onChange={(e) =>
+                  activeStill && onUpdateStill(activeStill.id, { model: e.target.value })
+                }
+              >
+                {IMAGE_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+              <span className="caret">▾</span>
+            </div>
+          </Field>
+          <Field label="Input">
+            <div className="field-pill">
+              <select
+                value={activeStill?.input_ref ?? ""}
+                disabled={!activeStill}
+                onChange={(e) =>
+                  activeStill &&
+                  onUpdateStill(activeStill.id, { input_ref: e.target.value || null })
+                }
+              >
+                <option value="">none</option>
+                {priorClipSections.map((s) => (
+                  <option key={s.id} value={`section:${s.id}:last_frame`}>
+                    {s.index.toString().padStart(2, "0")} last frame
+                  </option>
+                ))}
+              </select>
+              <span className="caret">▾</span>
+            </div>
+          </Field>
+          <Field label="Cost">
+            <div className="field-pill cost">{formatCost(stillCost)}</div>
+          </Field>
+        </div>
+
+        <div className="preview-row">
+          <div className={`preview-box${activeStill?.output_url ? " has-image" : ""}`}>
+            {activeStill?.output_url ? (
+              <img
+                key={activeStill.output_url}
+                src={activeStill.output_url}
+                alt={activeStill.label}
+                className="preview-img"
+              />
+            ) : null}
+            {activeStill ? (
+              <span className="vbadge">
+                s{section.stills.findIndex((s) => s.id === activeStill.id) + 1} · active
+              </span>
+            ) : null}
+            <span className="play">▶︎</span>
+            <span className="time">still</span>
+          </div>
+          <div className="versions-list">
+            {section.stills.map((still, i) => {
+              const isActive = still.id === section.active_still_id;
+              const canRemove = section.stills.length > 1;
+              return (
+                <div
+                  key={still.id}
+                  className={`vrow${isActive ? " active" : ""}`}
+                  onClick={() => onSelectStill(still.id)}
+                >
+                  <div className="vlabel">
+                    <span className="vid">s{i + 1}</span>
+                    <span className="vdesc">{still.label}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    {canRemove ? (
+                      <button
+                        type="button"
+                        className="vrow-remove"
+                        title="Remove still"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveStill(still.id);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    ) : null}
+                    <span className={`vmark ${isActive ? "active" : "muted"}`}>
+                      {isActive ? "●" : "↻"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+            <div className="vrow add" onClick={onAddStill}>+ new still</div>
+          </div>
+        </div>
+
+        <div className="gen-row">
+          <span className="gen-cost">{formatCost(stillCost)} per still</span>
+          <button
+            type="button"
+            className="btn primary"
+            disabled={!activeStill}
+            onClick={onGenerateStill}
+          >
+            ⏵ Generate still
+          </button>
+        </div>
+      </div>
+
+      {/* STAGE 2 — MOTION */}
+      <div className="stage">
+        <div className="stage-title"><span className="num">02</span>MOTION</div>
+
+        <Field label="Motion prompt">
+          <textarea
+            className="field-input tall"
+            rows={3}
+            value={activeVersion?.motion.prompt ?? ""}
+            disabled={!activeVersion}
+            placeholder={activeVersion ? "" : "+ new version to start"}
+            onChange={(e) =>
+              activeVersion &&
+              onUpdateClipVersion(activeVersion.id, { motion: { prompt: e.target.value } })
+            }
+          />
+        </Field>
+
+        <Field label="Version label">
+          <input
+            className="field-input"
+            value={activeVersion?.label ?? ""}
+            disabled={!activeVersion}
+            onChange={(e) => updateVersionLabel(e.target.value)}
+            placeholder="describe this take"
+          />
+        </Field>
+
+        <div className="field-row three">
+          <Field label="Model">
+            <div className="field-pill">
+              <select
+                value={activeVersion?.motion.model ?? "runway-gen4"}
+                disabled={!activeVersion}
+                onChange={(e) =>
+                  activeVersion &&
+                  onUpdateClipVersion(activeVersion.id, { motion: { model: e.target.value } })
+                }
+              >
+                {MOTION_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+              <span className="caret">▾</span>
+            </div>
+          </Field>
+          <Field label="Duration">
+            <div className="field-pill">
+              <select
+                value={activeVersion?.motion.duration_s ?? section.duration_s}
+                disabled={!activeVersion}
+                onChange={(e) =>
+                  activeVersion &&
+                  onUpdateClipVersion(activeVersion.id, {
+                    motion: { duration_s: Number(e.target.value) },
+                  })
+                }
+              >
+                {DURATION_OPTIONS_S.map((d) => (
+                  <option key={d} value={d}>{d.toFixed(1)}s</option>
+                ))}
+              </select>
+              <span className="caret">▾</span>
+            </div>
+          </Field>
+          <Field label="Cost">
+            <div className="field-pill cost">{formatCost(motionCost)}</div>
+          </Field>
+        </div>
+
+        <div className="preview-row">
+          <div className={`preview-box motion${motionStillUrl ? " has-image" : ""}`}>
+            {motionStillUrl ? (
+              <img
+                key={`${motionStillUrl}|${motionDirection}|${activeVersion?.motion.duration_s ?? 0}`}
+                src={motionStillUrl}
+                alt="motion preview"
+                className={`preview-img kb kb-${motionDirection}`}
+                style={{ animationDuration: `${activeVersion?.motion.duration_s ?? 3}s` }}
+              />
+            ) : null}
+            {activeVersion ? (
+              <span className="vbadge">
+                v{section.versions.findIndex((v) => v.id === activeVersion.id) + 1} · active
+              </span>
+            ) : null}
+            <span className="play">▶︎</span>
+            <span className="time">
+              0:00 / {(activeVersion?.motion.duration_s ?? section.duration_s).toFixed(1)}
+            </span>
+          </div>
+          <div className="versions-list">
+            {section.versions.map((v, i) => {
+              const isActive = v.id === section.active_version_id;
+              const canRemove = section.versions.length > 1;
+              return (
+                <div
+                  key={v.id}
+                  className={`vrow${isActive ? " active" : ""}`}
+                  onClick={() => onSelectVersion(v.id)}
+                >
+                  <div className="vlabel">
+                    <span className="vid">v{i + 1}</span>
+                    <span className="vdesc">{v.label}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    {canRemove ? (
+                      <button
+                        type="button"
+                        className="vrow-remove"
+                        title="Remove version"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveClipVersion(v.id);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    ) : null}
+                    <span className={`vmark ${isActive ? "active" : "muted"}`}>
+                      {isActive ? "●" : "↻"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+            <div className="vrow add" onClick={onAddClipVersion}>+ new version</div>
+          </div>
+        </div>
+
+        <div className="gen-row">
+          <span className="gen-cost">{formatCost(motionCost)} per version</span>
+          <button
+            type="button"
+            className="btn primary"
+            disabled={!activeVersion}
+            onClick={onGenerateMotion}
+          >
+            ⏵ Generate motion
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

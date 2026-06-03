@@ -534,6 +534,275 @@ textarea.field-input:focus,
 }
 .gen-cost { font-size: 10px; letter-spacing: 0.16em; color: var(--color-warn); }
 
+/* ───────────── INLINE EDIT ───────────── */
+.inline-edit-display {
+  cursor: text;
+  border-bottom: 1px dashed transparent;
+  transition: border-color .15s, color .15s;
+  display: inline;
+  outline: none;
+}
+.inline-edit-display:hover,
+.inline-edit-display:focus-visible {
+  border-bottom-color: var(--color-blood-faint);
+  color: var(--color-blood);
+}
+.inline-edit-display.empty {
+  color: var(--color-fg-faint);
+  font-style: italic;
+}
+.inline-edit {
+  background: var(--color-bg);
+  border: 1px solid var(--color-blood-faint);
+  color: var(--color-fg);
+  font: inherit;
+  padding: 2px 8px;
+  outline: none;
+  min-width: 80px;
+  width: auto;
+}
+textarea.inline-edit { resize: vertical; min-height: 60px; width: 100%; padding: 8px 10px; }
+
+/* ───────────── POPOVERS ───────────── */
+.popover-anchor { position: relative; display: inline-flex; }
+.popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  background: var(--color-elev);
+  border: 1px solid var(--color-line-strong);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.6);
+  min-width: 200px;
+  padding: 6px;
+}
+.popover.menu { padding: 4px; min-width: 140px; }
+.popover.menu.wide { min-width: 220px; }
+.popover.look-popover { min-width: 360px; padding: 16px; left: 0; }
+.popover.trans-popover { min-width: 220px; padding: 12px; top: calc(100% + 10px); left: -100px; }
+.popover.vo-popover { min-width: 360px; padding: 12px; top: calc(100% + 4px); }
+
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-fg);
+  border: 1px solid transparent;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.menu-item:hover { background: var(--color-bg); color: var(--color-blood); }
+.menu-item.active { color: var(--color-blood); border-color: var(--color-blood-faint); }
+.menu-item.add { color: var(--color-fg-faint); border-top: 1px dashed var(--color-line); margin-top: 4px; padding-top: 10px; }
+.menu-item.add:hover { color: var(--color-blood); }
+.menu-item .mi-tag {
+  display: inline-block;
+  min-width: 28px;
+  color: var(--color-blood);
+  letter-spacing: 0.12em;
+}
+
+.spec-pick {
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  border: 1px solid transparent;
+  padding: 1px 6px;
+}
+.spec-pick:hover { border-color: var(--color-blood-faint); color: var(--color-blood); }
+.spec-pick .caret { color: var(--color-fg-muted); font-size: 12px; margin-left: 4px; }
+.spec-pick.small { font-size: 11px; }
+
+.slot-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 14px 18px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  transition: background .15s, border-color .15s;
+}
+.lookbar .slot { padding: 0; position: relative; }
+.lookbar .slot-btn:hover { background: var(--color-elev); border-color: var(--color-blood-faint); }
+.lookbar .slot-btn .label {
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--color-fg-faint);
+}
+.lookbar .slot-btn .value {
+  font-size: 13px;
+  color: var(--color-fg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ───────────── EDITOR (popover bodies) ───────────── */
+.editor { display: flex; flex-direction: column; gap: 12px; }
+.editor.compact { gap: 10px; }
+.editor-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-fg-faint);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-line);
+}
+.editor .field-input { font-size: 12px; padding: 8px 10px; min-height: 36px; }
+.editor .field-input.tall { min-height: 56px; }
+.editor .field-input.read {
+  background: transparent;
+  border-style: dashed;
+  color: var(--color-fg-muted);
+  cursor: default;
+}
+.editor input[type="range"] {
+  width: 100%;
+  accent-color: var(--color-blood);
+}
+.color-input {
+  padding: 2px !important;
+  min-height: 36px;
+  height: 36px;
+  cursor: pointer;
+}
+
+.title-preview {
+  margin-top: 6px;
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 16px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid var(--color-line);
+}
+
+.trans-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.trans-option {
+  padding: 8px 10px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border: 1px solid var(--color-line);
+  color: var(--color-fg-muted);
+  cursor: pointer;
+  background: var(--color-bg);
+}
+.trans-option:hover { color: var(--color-fg); border-color: var(--color-line-strong); }
+.trans-option.active { color: var(--color-blood); border-color: var(--color-blood); background: var(--color-blood-soft); }
+
+/* ───────────── TIMELINE ADD/REMOVE ───────────── */
+.timeline-add-row {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 4px;
+}
+.timeline-add {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  padding: 8px 16px;
+  color: var(--color-fg-faint);
+  border: 1px dashed var(--color-line-strong);
+  cursor: pointer;
+  background: transparent;
+  transition: color .15s, border-color .15s;
+}
+.timeline-add:hover { color: var(--color-blood); border-color: var(--color-blood-faint); }
+
+.clip { position: relative; }
+.clip-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 10px;
+  color: var(--color-fg-faint);
+  opacity: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 5px;
+  transition: opacity .15s, color .15s;
+  letter-spacing: 0.12em;
+}
+.clip:hover .clip-remove { opacity: 1; }
+.clip-remove:hover { color: var(--color-blood); }
+
+/* ───────────── VO segments ───────────── */
+.vo-seg {
+  background: var(--color-blood-soft);
+  border: 1px solid var(--color-blood-faint);
+  padding: 8px 10px;
+  font-size: 10px;
+  color: var(--color-fg);
+  margin-right: 2px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: border-color .15s;
+}
+.vo-seg:hover { border-color: var(--color-blood); }
+.vo-seg.vo-add {
+  background: transparent;
+  border-style: dashed;
+  color: var(--color-fg-faint);
+  text-align: center;
+}
+.vo-seg.vo-add:hover { color: var(--color-blood); border-color: var(--color-blood-faint); }
+
+/* ───────────── MUSIC + GRADE bars are buttons ───────────── */
+button.music-bed,
+button.grade-strip {
+  width: 100%;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .15s, background .15s;
+}
+button.music-bed:hover { border-color: var(--color-blood-faint); }
+button.grade-strip:hover { border-color: var(--color-blood-faint); }
+
+/* ───────────── FLOW PANEL: title-only body ───────────── */
+.flow-body.single { grid-template-columns: 1fr; }
+.flow-body.single .stage.full {
+  padding-left: 0;
+  padding-right: 0;
+  border-right: none;
+}
+
+/* version dropdown is now a button */
+button.version-dd {
+  font: inherit;
+  cursor: pointer;
+  background: transparent;
+}
+button.version-dd:hover { border-color: var(--color-blood); }
+
+/* trans-marker as button retains its absolute positioning */
+button.trans-marker {
+  font: inherit;
+  padding: 0;
+}
+
 /* ───────────── FOOTER ───────────── */
 .footstrip {
   margin-top: 28px;
