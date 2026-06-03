@@ -1,6 +1,6 @@
 "use client";
 
-import type { Aspect, Project, Section } from "./types";
+import type { Aspect, Project, Section, Transition } from "./types";
 import { buildCubeLUT } from "./grade";
 
 export type RenderProgress = {
@@ -289,7 +289,7 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
         "-t", a.duration_s.toFixed(2),
         "-i", inName,
         "-vf",
-        `scale=${w}:${h}:flags=lanczos,fade=t=in:st=0:d=0.3,fade=t=out:st=${Math.max(0, a.duration_s - 0.3).toFixed(2)}:d=0.3,setsar=1`,
+        `scale=${w}:${h}:flags=lanczos,setsar=1`,
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
         "-r", "30",
@@ -307,17 +307,63 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
     throw new Error("Nothing to render — no video or still assets available.");
   }
 
-  onProgress?.({ phase: "encoding", pct: 70, message: "Concatenating segments…" });
+  onProgress?.({ phase: "encoding", pct: 70, message: "Applying transitions…" });
 
-  const concatList = segNames.map((n) => `file '${n}'`).join("\n");
-  await ffmpeg.writeFile("concat.txt", new TextEncoder().encode(concatList));
+  const trByTo = new Map<string, Transition>();
+  for (const t of project.transitions) trByTo.set(t.to_section_id, t);
+
+  const inputArgs: string[] = [];
+  for (const n of segNames) {
+    inputArgs.push("-i", n);
+  }
+
+  const parts: string[] = [];
+  for (let i = 0; i < segNames.length; i++) {
+    parts.push(`[${i}:v]format=yuv420p,fps=30,setpts=PTS-STARTPTS[s${i}]`);
+  }
+
+  let outLabel = "[s0]";
+  if (segNames.length > 1) {
+    let cumDur = plan.assets[0].duration_s;
+    for (let i = 1; i < segNames.length; i++) {
+      const tr = trByTo.get(plan.assets[i].sectionId);
+      const xfTransition =
+        tr?.type === "fade_black" ? "fadeblack" : tr?.type === "cut" ? "fade" : "fade";
+      const rawDur = tr?.type === "cut" ? 0.04 : tr?.duration_s ?? 0.4;
+      const xfDur = Math.max(0.04, Math.min(rawDur, plan.assets[i].duration_s - 0.04));
+      const offset = Math.max(0, cumDur - xfDur);
+      const label = i === segNames.length - 1 ? "vchain" : `vx${i}`;
+      parts.push(
+        `${outLabel}[s${i}]xfade=transition=${xfTransition}:duration=${xfDur.toFixed(3)}:offset=${offset.toFixed(3)}[${label}]`,
+      );
+      outLabel = `[${label}]`;
+      cumDur += plan.assets[i].duration_s - xfDur;
+    }
+  }
+  const totalVideoSeconds =
+    segNames.length > 1
+      ? plan.assets.reduce((acc, a, i) => {
+          if (i === 0) return a.duration_s;
+          const tr = trByTo.get(a.sectionId);
+          const rawDur = tr?.type === "cut" ? 0.04 : tr?.duration_s ?? 0.4;
+          const xfDur = Math.max(0.04, Math.min(rawDur, a.duration_s - 0.04));
+          return acc + a.duration_s - xfDur;
+        }, 0)
+      : plan.assets[0]?.duration_s ?? 0;
+  parts.push(`${outLabel}null[vout]`);
+
+  const filterComplex = parts.join(";");
 
   await ffmpeg.exec([
-    "-f", "concat",
-    "-safe", "0",
-    "-i", "concat.txt",
-    "-c", "copy",
-    "out_mux.ts",
+    ...inputArgs,
+    "-filter_complex", filterComplex,
+    "-map", "[vout]",
+    "-c:v", "libx264",
+    "-pix_fmt", "yuv420p",
+    "-r", "30",
+    "-an",
+    "-t", totalVideoSeconds.toFixed(3),
+    "out_mux.mp4",
   ]);
 
   const audioFiles: string[] = [];
@@ -332,6 +378,8 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
     const mixLabels: string[] = [];
     let inputIndex = 0;
 
+    const audioTotalSeconds = totalVideoSeconds;
+
     if (hasMusic) {
       const musicData = await fetchFile(project.music_track!.output_url!);
       const musicName = "music.mp3";
@@ -339,7 +387,7 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
       audioFiles.push(musicName);
       inputs.push("-i", musicName);
       filterParts.push(
-        `[${inputIndex}:a]aresample=44100,atrim=0:${plan.totalDuration.toFixed(2)},apad=whole_dur=${plan.totalDuration.toFixed(2)},volume=${voWithAudio.length > 0 ? "0.35" : "0.7"}[mus]`,
+        `[${inputIndex}:a]aresample=44100,atrim=0:${audioTotalSeconds.toFixed(2)},apad=whole_dur=${audioTotalSeconds.toFixed(2)},volume=${voWithAudio.length > 0 ? "0.35" : "0.7"}[mus]`,
       );
       mixLabels.push("[mus]");
       inputIndex += 1;
@@ -357,14 +405,13 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
       inputIndex += 1;
     });
 
-    // Write VO files (do this AFTER constructing filter so inputs map cleanly)
     for (let i = 0; i < voWithAudio.length; i++) {
       const seg = voWithAudio[i];
       const data = await fetchFile(seg.output_url!);
       await ffmpeg.writeFile(`vo_${i}.mp3`, data);
     }
 
-    const mixDuration = plan.totalDuration.toFixed(2);
+    const mixDuration = audioTotalSeconds.toFixed(2);
     const amix =
       mixLabels.length > 1
         ? `${mixLabels.join("")}amix=inputs=${mixLabels.length}:duration=longest:normalize=0[a]`
@@ -394,7 +441,7 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
 
   if (audioMixName) {
     await ffmpeg.exec([
-      "-i", "out_mux.ts",
+      "-i", "out_mux.mp4",
       "-i", audioMixName,
       "-map", "0:v",
       "-map", "1:a",
@@ -408,7 +455,7 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
     ]);
   } else {
     await ffmpeg.exec([
-      "-i", "out_mux.ts",
+      "-i", "out_mux.mp4",
       ...vfChain,
       "-c:v", "libx264",
       "-pix_fmt", "yuv420p",
@@ -423,9 +470,8 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
 
   const cleanup = [
     ...segNames,
-    "out_mux.ts",
+    "out_mux.mp4",
     "out.mp4",
-    "concat.txt",
     ...audioFiles,
     ...(audioMixName ? [audioMixName] : []),
     ...(lutName ? [lutName] : []),
