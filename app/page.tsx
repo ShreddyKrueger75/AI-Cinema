@@ -38,6 +38,7 @@ import {
   type ProviderId,
 } from "@/lib/providers";
 import { useLibrary, type LibraryItem, type LibraryKind } from "@/lib/library";
+import { TEMPLATES } from "@/lib/templates";
 
 const ASPECT_OPTIONS: Aspect[] = ["9:16", "16:9", "1:1"];
 
@@ -273,6 +274,7 @@ export default function HomePage() {
   const [lookOpen, setLookOpen] = useState<null | "brief" | "grade" | "music" | "title">(null);
   const [renderOpen, setRenderOpen] = useState(false);
   const [providersOpen, setProvidersOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
 
   const handleReset = useCallback(() => {
     if (confirm("Reset project to defaults? Unsaved work will be lost.")) resetProject();
@@ -370,6 +372,39 @@ export default function HomePage() {
           </div>
         </div>
         <div className="project-actions">
+          <span className="popover-anchor">
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => setTemplatesOpen((o) => !o)}
+              title="Project templates"
+            >
+              ⚀ Templates
+            </button>
+            <Popover
+              open={templatesOpen}
+              onClose={() => setTemplatesOpen(false)}
+              className="templates-menu"
+            >
+              <div className="templates-head">// PROJECT TEMPLATES</div>
+              {TEMPLATES.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className="template-item"
+                  onClick={() => {
+                    if (confirm(`Load "${t.name}"? Current project will be replaced.`)) {
+                      setProject(t.build());
+                    }
+                    setTemplatesOpen(false);
+                  }}
+                >
+                  <span className="tpl-name">{t.name}</span>
+                  <span className="tpl-desc">{t.description}</span>
+                </button>
+              ))}
+            </Popover>
+          </span>
           <button
             type="button"
             className="btn ghost"

@@ -580,6 +580,44 @@ textarea.inline-edit { resize: vertical; min-height: 60px; width: 100%; padding:
 .popover.align-center { left: 50%; transform: translateX(-50%); }
 .popover.menu { padding: 4px; min-width: 140px; }
 .popover.menu.wide { min-width: 220px; }
+.popover.templates-menu { padding: 4px; min-width: 320px; }
+.templates-head {
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--color-fg-faint);
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--color-line);
+  margin-bottom: 2px;
+}
+.template-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.template-item:hover {
+  background: var(--color-bg);
+  border-color: var(--color-blood-faint);
+}
+.template-item .tpl-name {
+  font-size: 12px;
+  color: var(--color-fg);
+  letter-spacing: 0.04em;
+}
+.template-item:hover .tpl-name { color: var(--color-blood); }
+.template-item .tpl-desc {
+  font-size: 10px;
+  color: var(--color-fg-muted);
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
 .popover.look-popover { min-width: 360px; padding: 16px; left: 0; }
 .popover.trans-popover { min-width: 220px; padding: 12px; top: calc(100% + 10px); left: -100px; }
 .popover.vo-popover { min-width: 360px; padding: 12px; top: calc(100% + 4px); }
