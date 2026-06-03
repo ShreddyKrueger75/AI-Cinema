@@ -1081,6 +1081,37 @@ export default function HomePage() {
                 <div className="clip-num">
                   {section.index.toString().padStart(2, "0")} // {section.type.toUpperCase()}
                 </div>
+                {(() => {
+                  const v = section.versions.find((x) => x.id === section.active_version_id);
+                  const stillRef = v && v.kind === "clip" ? v.still_ref ?? section.active_still_id : section.active_still_id;
+                  const still = stillRef ? section.stills.find((s) => s.id === stillRef) : null;
+                  const thumb = still?.output_url;
+                  const isVideo = v && v.kind === "clip" && v.output_url && /^https?:\/\//.test(v.output_url);
+                  if (section.type === "title") {
+                    return (
+                      <div
+                        className="clip-thumb title"
+                        style={{
+                          background: project.title_settings?.background_color ?? "#0a0908",
+                          color: project.title_settings?.color ?? "#f4f1ea",
+                        }}
+                      >
+                        <span>
+                          {v && v.kind === "title" ? v.text.slice(0, 16) : "TITLE"}
+                        </span>
+                      </div>
+                    );
+                  }
+                  if (thumb) {
+                    return (
+                      <div className="clip-thumb">
+                        <img src={thumb} alt={section.title} />
+                        {isVideo ? <span className="clip-thumb-badge">▶</span> : null}
+                      </div>
+                    );
+                  }
+                  return <div className="clip-thumb empty">no still</div>;
+                })()}
                 <div className="clip-title">{section.title}</div>
                 <div className="clip-meta">
                   {empty ? (
