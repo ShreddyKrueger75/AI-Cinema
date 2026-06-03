@@ -459,7 +459,8 @@ textarea.field-input:focus,
 .preview-box.motion { background: linear-gradient(155deg, #281a14, #3a2418 30%, #2a1810 70%, #150d08); }
 .preview-box.motion.has-image { background: #000; }
 
-.preview-img {
+.preview-img,
+.preview-video {
   position: absolute;
   inset: 0;
   width: 100%;

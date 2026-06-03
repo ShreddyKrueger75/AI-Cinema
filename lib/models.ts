@@ -6,6 +6,7 @@ export type ImageModelId =
   | "ideogram-v2";
 export type MotionModelId =
   | "ken-burns"
+  | "minimax-video-01"
   | "runway-gen4"
   | "runway-gen3"
   | "pika-2.0"
@@ -35,6 +36,7 @@ export const IMAGE_MODELS: ImageModel[] = [
 
 export const MOTION_MODELS: MotionModel[] = [
   { id: "ken-burns", label: "Ken Burns (free)", cost_per_second: 0, free: true },
+  { id: "minimax-video-01", label: "MiniMax Video-01", cost_per_second: 0.075 },
   { id: "runway-gen4", label: "Runway Gen-4", cost_per_second: 0.4 },
   { id: "runway-gen3", label: "Runway Gen-3", cost_per_second: 0.25 },
   { id: "pika-2.0", label: "Pika 2.0", cost_per_second: 0.2 },

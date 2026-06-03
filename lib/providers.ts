@@ -74,6 +74,7 @@ const MODEL_TO_PROVIDER: Record<string, ProviderId> = {
   "flux-schnell": "replicate",
   "sdxl": "replicate",
   "ideogram-v2": "replicate",
+  "minimax-video-01": "replicate",
   "runway-gen4": "runway",
   "runway-gen3": "runway",
   "pika-2.0": "replicate",

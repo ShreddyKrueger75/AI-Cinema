@@ -43,7 +43,9 @@ import { useGenState, stillJobKey, motionJobKey, type GenSlot } from "@/lib/gens
 import {
   composePromptWithBrief,
   isReplicateImageModel,
+  isReplicateMotionModel,
   runReplicateImage,
+  runReplicateMotion,
 } from "@/lib/replicate";
 
 const ASPECT_OPTIONS: Aspect[] = ["9:16", "16:9", "1:1"];
@@ -1697,34 +1699,75 @@ function FlowPanel({
     );
   };
 
-  const handleGenerateMotion = () => {
+  const handleGenerateMotion = async () => {
     if (!activeVersion || activeVersion.kind !== "clip") return;
-    if (!isMotionModelFree(activeVersion.motion.model) && !modelHasKey(activeVersion.motion.model)) {
-      const pid = providerForModel(activeVersion.motion.model);
-      promptForKey(PROVIDERS.find((p) => p.id === pid)?.name ?? activeVersion.motion.model);
+    const jobKey = motionJobKey(section.id, activeVersion.id);
+    if (jobs[jobKey]?.status === "running") return;
+
+    const modelId = activeVersion.motion.model;
+
+    if (isMotionModelFree(modelId)) {
+      const stillToUse = referencedStill;
+      if (stillToUse && !stillToUse.output_url && isImageModelFree(stillToUse.model)) {
+        const url = pollinationsUrl(
+          stillToUse.image_prompt,
+          project.aspect,
+          newSeed(),
+          project.brief?.visual,
+        );
+        updateStill(section.id, stillToUse.id, { output_url: url });
+      }
+      const direction = kenBurnsFromPrompt(activeVersion.motion.prompt);
+      updateClipVersion(section.id, activeVersion.id, {
+        output_url: `kenburns:${direction}`,
+        still_ref: activeVersion.still_ref ?? activeStill?.id ?? null,
+      });
       return;
     }
-    if (!isMotionModelFree(activeVersion.motion.model)) {
-      alert(
-        `Live ${activeVersion.motion.model} generation ships next. For now, switch to "Ken Burns (free)" to preview.`,
-      );
+
+    if (!modelHasKey(modelId)) {
+      const pid = providerForModel(modelId);
+      promptForKey(PROVIDERS.find((p) => p.id === pid)?.name ?? modelId);
       return;
     }
-    const stillToUse = referencedStill;
-    if (stillToUse && !stillToUse.output_url && isImageModelFree(stillToUse.model)) {
-      const url = pollinationsUrl(
-        stillToUse.image_prompt,
-        project.aspect,
-        newSeed(),
+
+    const pid = providerForModel(modelId);
+    if (pid === "replicate" && isReplicateMotionModel(modelId)) {
+      const stillToUse = referencedStill;
+      if (!stillToUse?.output_url) {
+        alert(
+          "Motion needs a generated still as the first frame. Generate the still first.",
+        );
+        return;
+      }
+      const token = providerKeys.replicate!;
+      const composedPrompt = composePromptWithBrief(
+        activeVersion.motion.prompt,
         project.brief?.visual,
       );
-      updateStill(section.id, stillToUse.id, { output_url: url });
+      setJob(jobKey, { status: "running", startedAt: Date.now() });
+      try {
+        const videoUrl = await runReplicateMotion({
+          model: modelId,
+          prompt: composedPrompt,
+          firstFrameUrl: stillToUse.output_url,
+          apiToken: token,
+        });
+        updateClipVersion(section.id, activeVersion.id, {
+          output_url: videoUrl,
+          still_ref: stillToUse.id,
+        });
+        clearJob(jobKey);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setJob(jobKey, { status: "error", error: message });
+      }
+      return;
     }
-    const direction = kenBurnsFromPrompt(activeVersion.motion.prompt);
-    updateClipVersion(section.id, activeVersion.id, {
-      output_url: `kenburns:${direction}`,
-      still_ref: activeVersion.still_ref ?? activeStill?.id ?? null,
-    });
+
+    alert(
+      `Live ${modelId} generation isn't wired yet. Switch to "Ken Burns (free)" or "MiniMax Video-01" (Replicate) to generate.`,
+    );
   };
 
   const dismissStillError = () => {
@@ -1736,9 +1779,13 @@ function FlowPanel({
     clearJob(motionJobKey(section.id, activeVersion.id));
   };
 
+  const motionOutputUrl =
+    activeVersion && activeVersion.kind === "clip" ? activeVersion.output_url : undefined;
+  const motionVideoUrl =
+    motionOutputUrl && /^https?:\/\//.test(motionOutputUrl) ? motionOutputUrl : null;
   const motionDirection =
-    activeVersion && activeVersion.kind === "clip" && activeVersion.output_url?.startsWith("kenburns:")
-      ? (activeVersion.output_url.slice("kenburns:".length) as "in" | "out" | "left" | "right")
+    motionOutputUrl && motionOutputUrl.startsWith("kenburns:")
+      ? (motionOutputUrl.slice("kenburns:".length) as "in" | "out" | "left" | "right")
       : null;
 
   const motionStillUrl = motionDirection && referencedStill?.output_url ? referencedStill.output_url : null;
@@ -1860,6 +1907,7 @@ function FlowPanel({
           activeVersion={activeVersion && activeVersion.kind === "clip" ? activeVersion : null}
           motionDirection={motionDirection}
           motionStillUrl={motionStillUrl}
+          motionVideoUrl={motionVideoUrl}
           priorClipSections={priorClipSections}
           modelHasKey={modelHasKey}
           stillJob={stillJob}
@@ -1984,6 +2032,7 @@ type ClipFlowBodyProps = {
     | null;
   motionDirection: "in" | "out" | "left" | "right" | null;
   motionStillUrl: string | null;
+  motionVideoUrl: string | null;
   priorClipSections: Section[];
   modelHasKey: (modelId: string) => boolean;
   stillJob?: GenSlot;
@@ -2020,6 +2069,7 @@ function ClipFlowBody({
   activeVersion,
   motionDirection,
   motionStillUrl,
+  motionVideoUrl,
   priorClipSections,
   modelHasKey,
   stillJob,
@@ -2305,11 +2355,21 @@ function ClipFlowBody({
 
         <div className="preview-row">
           <div
-            className={`preview-box motion${motionStillUrl ? " has-image" : ""}${
+            className={`preview-box motion${motionStillUrl || motionVideoUrl ? " has-image" : ""}${
               motionJob?.status === "running" ? " busy" : ""
             }${motionJob?.status === "error" ? " errored" : ""}`}
           >
-            {motionStillUrl ? (
+            {motionVideoUrl ? (
+              <video
+                key={motionVideoUrl}
+                src={motionVideoUrl}
+                className="preview-video"
+                autoPlay
+                loop
+                muted
+                playsInline
+              />
+            ) : motionStillUrl ? (
               <img
                 key={`${motionStillUrl}|${motionDirection}|${activeVersion?.motion.duration_s ?? 0}`}
                 src={motionStillUrl}

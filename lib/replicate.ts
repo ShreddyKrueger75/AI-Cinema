@@ -130,6 +130,72 @@ function buildImageInput(opts: RunImageOpts): Record<string, unknown> {
   };
 }
 
+export type ReplicateMotionModel = "minimax-video-01";
+
+const MOTION_MODEL_SLUGS: Record<ReplicateMotionModel, string> = {
+  "minimax-video-01": "minimax/video-01",
+};
+
+export function isReplicateMotionModel(id: string): id is ReplicateMotionModel {
+  return id in MOTION_MODEL_SLUGS;
+}
+
+export type RunMotionOpts = {
+  model: ReplicateMotionModel;
+  prompt: string;
+  firstFrameUrl: string;
+  apiToken: string;
+  signal?: AbortSignal;
+};
+
+function buildMotionInput(opts: RunMotionOpts): Record<string, unknown> {
+  if (opts.model === "minimax-video-01") {
+    return {
+      prompt: opts.prompt,
+      first_frame_image: opts.firstFrameUrl,
+      prompt_optimizer: false,
+    };
+  }
+  return { prompt: opts.prompt, image: opts.firstFrameUrl };
+}
+
+function extractVideoUrl(output: unknown): string {
+  if (typeof output === "string") return output;
+  if (Array.isArray(output) && output.length > 0) {
+    const first = output[0];
+    if (typeof first === "string") return first;
+  }
+  if (output && typeof output === "object") {
+    const o = output as Record<string, unknown>;
+    if (typeof o.url === "string") return o.url;
+    if (typeof o.video === "string") return o.video;
+  }
+  throw new Error("Replicate returned an unexpected motion output shape");
+}
+
+export async function runReplicateMotion(opts: RunMotionOpts): Promise<string> {
+  const slug = MOTION_MODEL_SLUGS[opts.model];
+  const input = buildMotionInput(opts);
+  const r = await fetchJSON(`${BASE}/models/${slug}/predictions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${opts.apiToken}`,
+      "Content-Type": "application/json",
+      Prefer: "wait=30",
+    },
+    body: JSON.stringify({ input }),
+    signal: opts.signal,
+  });
+  let pred = (await r.json()) as Prediction;
+  if (pred.status === "starting" || pred.status === "processing") {
+    pred = await poll(pred.id, opts.apiToken, opts.signal);
+  }
+  if (pred.status !== "succeeded") {
+    throw new Error(pred.error || `Generation ${pred.status}`);
+  }
+  return extractVideoUrl(pred.output);
+}
+
 export async function runReplicateImage(opts: RunImageOpts): Promise<string> {
   const slug = IMAGE_MODEL_SLUGS[opts.model];
   const input = buildImageInput(opts);
