@@ -168,7 +168,7 @@ button {
   align-items: center;
   justify-content: space-between;
 }
-.lookbar .value .caret { color: var(--color-fg-faint); font-size: 10px; }
+.lookbar .value .caret { color: var(--color-fg-muted); font-size: 14px; }
 
 /* ───────────── TIMELINE ───────────── */
 .timeline-wrap {
@@ -331,7 +331,7 @@ button {
   color: var(--color-blood);
   letter-spacing: 0.12em;
 }
-.version-dd .caret { color: var(--color-fg-faint); font-size: 9px; }
+.version-dd .caret { color: var(--color-fg-muted); font-size: 13px; }
 
 .flow-body { padding: 26px 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
 .stage { padding: 0 22px; border-right: 1px solid var(--color-line); }
@@ -386,8 +386,10 @@ textarea.field-input:focus,
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
+  cursor: pointer;
 }
-.field-pill .caret { color: var(--color-fg-faint); font-size: 9px; margin-left: 8px; }
+.field-pill:hover { border-color: var(--color-line-strong); }
+.field-pill .caret { color: var(--color-fg-muted); font-size: 14px; margin-left: 8px; }
 .field-pill.cost { color: var(--color-warn); }
 .field-pill select {
   appearance: none;
