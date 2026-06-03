@@ -37,6 +37,7 @@ import {
   useProviderKeys,
   type ProviderId,
 } from "@/lib/providers";
+import { useLibrary, type LibraryItem, type LibraryKind } from "@/lib/library";
 
 const ASPECT_OPTIONS: Aspect[] = ["9:16", "16:9", "1:1"];
 
@@ -234,11 +235,23 @@ export default function HomePage() {
   const setProviderKey = useProviderKeys((s) => s.setKey);
   const removeProviderKey = useProviderKeys((s) => s.removeKey);
 
+  const libraryBriefs = useLibrary((s) => s.briefs);
+  const libraryGrades = useLibrary((s) => s.grades);
+  const libraryMusic = useLibrary((s) => s.music);
+  const libraryTitles = useLibrary((s) => s.titles);
+  const saveBriefToLibrary = useLibrary((s) => s.saveBrief);
+  const saveGradeToLibrary = useLibrary((s) => s.saveGrade);
+  const saveMusicToLibrary = useLibrary((s) => s.saveMusic);
+  const saveTitleToLibrary = useLibrary((s) => s.saveTitle);
+  const removeLibraryItem = useLibrary((s) => s.removeItem);
+  const renameLibraryItem = useLibrary((s) => s.renameItem);
+
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     Promise.all([
       Promise.resolve(useStore.persist.rehydrate()),
       Promise.resolve(useProviderKeys.persist.rehydrate()),
+      Promise.resolve(useLibrary.persist.rehydrate()),
     ]).finally(() => setHydrated(true));
   }, []);
 
@@ -373,7 +386,15 @@ export default function HomePage() {
         >
           <BriefEditor
             brief={project.brief}
+            library={libraryBriefs}
             onChange={updateBrief}
+            onLoadPreset={(item) => {
+              const { id: _drop, ...rest } = item;
+              updateBrief(rest);
+            }}
+            onSaveAs={(name) => project.brief && saveBriefToLibrary(project.brief, name)}
+            onRemovePreset={(id) => removeLibraryItem("brief", id)}
+            onRenamePreset={(id, name) => renameLibraryItem("brief", id, name)}
             onClose={() => setLookOpen(null)}
           />
         </LookSlot>
@@ -385,7 +406,15 @@ export default function HomePage() {
         >
           <GradeEditor
             grade={project.grade}
+            library={libraryGrades}
             onChange={updateGrade}
+            onLoadPreset={(item) => {
+              const { id: _drop, ...rest } = item;
+              updateGrade(rest);
+            }}
+            onSaveAs={(name) => project.grade && saveGradeToLibrary(project.grade, name)}
+            onRemovePreset={(id) => removeLibraryItem("grade", id)}
+            onRenamePreset={(id, name) => renameLibraryItem("grade", id, name)}
             onClose={() => setLookOpen(null)}
           />
         </LookSlot>
@@ -397,7 +426,15 @@ export default function HomePage() {
         >
           <MusicEditor
             music={project.music_track}
+            library={libraryMusic}
             onChange={updateMusic}
+            onLoadPreset={(item) => {
+              const { id: _drop, ...rest } = item;
+              updateMusic(rest);
+            }}
+            onSaveAs={(name) => project.music_track && saveMusicToLibrary(project.music_track, name)}
+            onRemovePreset={(id) => removeLibraryItem("music", id)}
+            onRenamePreset={(id, name) => renameLibraryItem("music", id, name)}
             onClose={() => setLookOpen(null)}
           />
         </LookSlot>
@@ -409,7 +446,17 @@ export default function HomePage() {
         >
           <TitleStyleEditor
             style={project.title_settings}
+            library={libraryTitles}
             onChange={updateTitleStyle}
+            onLoadPreset={(item) => {
+              const { id: _drop, ...rest } = item;
+              updateTitleStyle(rest);
+            }}
+            onSaveAs={(name) =>
+              project.title_settings && saveTitleToLibrary(project.title_settings, name)
+            }
+            onRemovePreset={(id) => removeLibraryItem("title", id)}
+            onRenamePreset={(id, name) => renameLibraryItem("title", id, name)}
             onClose={() => setLookOpen(null)}
           />
         </LookSlot>
@@ -723,21 +770,151 @@ function LookSlot({
   );
 }
 
+type LibraryEditorProps<TItem> = {
+  library: LibraryItem<TItem>[];
+  onLoadPreset: (item: TItem) => void;
+  onSaveAs: (name: string) => void;
+  onRemovePreset: (id: string) => void;
+  onRenamePreset: (id: string, name: string) => void;
+};
+
+function LibrarySection<T>({
+  library,
+  kind,
+  activeName,
+  onLoadPreset,
+  onSaveAs,
+  onRemovePreset,
+  onRenamePreset,
+}: {
+  library: LibraryItem<T>[];
+  kind: LibraryKind;
+  activeName?: string;
+  onLoadPreset: (item: T) => void;
+  onSaveAs: (name: string) => void;
+  onRemovePreset: (id: string) => void;
+  onRenamePreset: (id: string, name: string) => void;
+}) {
+  const [saveAsOpen, setSaveAsOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    if (saveAsOpen) setDraft(activeName ? `${activeName} copy` : "New preset");
+  }, [saveAsOpen, activeName]);
+
+  return (
+    <div className="library-section">
+      <div className="library-head">
+        <span className="library-label">// LIBRARY</span>
+        {saveAsOpen ? (
+          <span className="library-save">
+            <input
+              className="field-input"
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && draft.trim()) {
+                  onSaveAs(draft.trim());
+                  setSaveAsOpen(false);
+                }
+                if (e.key === "Escape") setSaveAsOpen(false);
+              }}
+              placeholder="Preset name"
+            />
+            <button
+              type="button"
+              className="btn provider-act"
+              disabled={!draft.trim()}
+              onClick={() => {
+                onSaveAs(draft.trim());
+                setSaveAsOpen(false);
+              }}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              className="btn ghost provider-act"
+              onClick={() => setSaveAsOpen(false)}
+            >
+              Cancel
+            </button>
+          </span>
+        ) : (
+          <button type="button" className="btn ghost provider-act" onClick={() => setSaveAsOpen(true)}>
+            + Save current
+          </button>
+        )}
+      </div>
+      <div className="library-chips">
+        {library.map((entry) => {
+          const isActive = entry.name === activeName;
+          return (
+            <span key={entry.id} className={`lib-chip ${isActive ? "active" : ""}`}>
+              <button
+                type="button"
+                className="lib-chip-pick"
+                onClick={() => onLoadPreset(entry.item)}
+                title={entry.built_in ? "Built-in preset" : "Saved preset"}
+              >
+                {entry.built_in ? <span className="lib-bi">★</span> : null}
+                {entry.name}
+              </button>
+              {!entry.built_in ? (
+                <button
+                  type="button"
+                  className="lib-chip-remove"
+                  title="Remove from library"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const nextName = prompt("Rename or empty to remove:", entry.name);
+                    if (nextName === null) return;
+                    const trimmed = nextName.trim();
+                    if (!trimmed) onRemovePreset(entry.id);
+                    else onRenamePreset(entry.id, trimmed);
+                  }}
+                >
+                  ⋯
+                </button>
+              ) : null}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function BriefEditor({
   brief,
+  library,
   onChange,
+  onLoadPreset,
+  onSaveAs,
+  onRemovePreset,
+  onRenamePreset,
   onClose,
 }: {
   brief: Project["brief"];
   onChange: (patch: Partial<NonNullable<Project["brief"]>>) => void;
   onClose: () => void;
-}) {
+} & LibraryEditorProps<NonNullable<Project["brief"]>>) {
   return (
     <div className="editor">
       <div className="editor-head">
         <span>// BRIEF</span>
         <button type="button" className="btn ghost" onClick={onClose}>✕</button>
       </div>
+      <LibrarySection
+        library={library}
+        kind="brief"
+        activeName={brief?.name}
+        onLoadPreset={onLoadPreset}
+        onSaveAs={onSaveAs}
+        onRemovePreset={onRemovePreset}
+        onRenamePreset={onRenamePreset}
+      />
       <Field label="Name">
         <input
           className="field-input"
@@ -869,13 +1046,18 @@ function RefList({
 
 function GradeEditor({
   grade,
+  library,
   onChange,
+  onLoadPreset,
+  onSaveAs,
+  onRemovePreset,
+  onRenamePreset,
   onClose,
 }: {
   grade: Project["grade"];
   onChange: (patch: Partial<NonNullable<Project["grade"]>>) => void;
   onClose: () => void;
-}) {
+} & LibraryEditorProps<NonNullable<Project["grade"]>>) {
   const adj = grade?.adjustments ?? {};
   const setAdjustment = (key: string, value: number | string) =>
     onChange({ adjustments: { ...adj, [key]: value } });
@@ -887,6 +1069,15 @@ function GradeEditor({
         <span>// GRADE</span>
         <button type="button" className="btn ghost" onClick={onClose}>✕</button>
       </div>
+      <LibrarySection
+        library={library}
+        kind="grade"
+        activeName={grade?.name}
+        onLoadPreset={onLoadPreset}
+        onSaveAs={onSaveAs}
+        onRemovePreset={onRemovePreset}
+        onRenamePreset={onRenamePreset}
+      />
       <Field label="Name">
         <input
           className="field-input"
@@ -959,19 +1150,33 @@ function GradeEditor({
 
 function MusicEditor({
   music,
+  library,
   onChange,
+  onLoadPreset,
+  onSaveAs,
+  onRemovePreset,
+  onRenamePreset,
   onClose,
 }: {
   music: Project["music_track"];
   onChange: (patch: Partial<NonNullable<Project["music_track"]>>) => void;
   onClose: () => void;
-}) {
+} & LibraryEditorProps<NonNullable<Project["music_track"]>>) {
   return (
     <div className="editor">
       <div className="editor-head">
         <span>// MUSIC</span>
         <button type="button" className="btn ghost" onClick={onClose}>✕</button>
       </div>
+      <LibrarySection
+        library={library}
+        kind="music"
+        activeName={music?.name}
+        onLoadPreset={onLoadPreset}
+        onSaveAs={onSaveAs}
+        onRemovePreset={onRemovePreset}
+        onRenamePreset={onRenamePreset}
+      />
       <Field label="Name">
         <input
           className="field-input"
@@ -1006,19 +1211,33 @@ function MusicEditor({
 
 function TitleStyleEditor({
   style,
+  library,
   onChange,
+  onLoadPreset,
+  onSaveAs,
+  onRemovePreset,
+  onRenamePreset,
   onClose,
 }: {
   style: Project["title_settings"];
   onChange: (patch: Partial<NonNullable<Project["title_settings"]>>) => void;
   onClose: () => void;
-}) {
+} & LibraryEditorProps<NonNullable<Project["title_settings"]>>) {
   return (
     <div className="editor">
       <div className="editor-head">
         <span>// TITLE STYLE</span>
         <button type="button" className="btn ghost" onClick={onClose}>✕</button>
       </div>
+      <LibrarySection
+        library={library}
+        kind="title"
+        activeName={style?.name}
+        onLoadPreset={onLoadPreset}
+        onSaveAs={onSaveAs}
+        onRemovePreset={onRemovePreset}
+        onRenamePreset={onRenamePreset}
+      />
       <Field label="Name">
         <input
           className="field-input"

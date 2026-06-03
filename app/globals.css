@@ -950,6 +950,70 @@ button.trans-marker {
 }
 .provider-link:hover { color: var(--color-blood); border-bottom-color: var(--color-blood); }
 
+/* ───────────── LIBRARY SECTION ───────────── */
+.library-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--color-line);
+}
+.library-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.library-label {
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--color-fg-faint);
+}
+.library-save { display: flex; gap: 6px; align-items: stretch; flex: 1; margin-left: 12px; }
+.library-save .field-input { flex: 1; padding: 6px 10px; min-height: 30px; font-size: 11px; }
+.library-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lib-chip {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--color-line);
+  background: var(--color-bg);
+}
+.lib-chip:hover { border-color: var(--color-line-strong); }
+.lib-chip.active { border-color: var(--color-blood); background: var(--color-blood-soft); }
+.lib-chip-pick {
+  padding: 5px 10px;
+  font-size: 11px;
+  color: var(--color-fg);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.lib-chip-pick:hover { color: var(--color-blood); }
+.lib-chip.active .lib-chip-pick { color: var(--color-blood); }
+.lib-bi {
+  font-size: 9px;
+  color: var(--color-warn);
+  margin-right: 2px;
+}
+.lib-chip-remove {
+  padding: 5px 8px;
+  font-size: 11px;
+  color: var(--color-fg-faint);
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--color-line);
+  cursor: pointer;
+}
+.lib-chip-remove:hover { color: var(--color-blood); }
+
 /* ───────────── REF LIST ───────────── */
 .ref-list { display: flex; flex-direction: column; gap: 8px; }
 .ref-thumbs {
