@@ -47,6 +47,7 @@ import {
   runReplicateImage,
   runReplicateMotion,
 } from "@/lib/replicate";
+import { runElevenLabsTTS, voiceList } from "@/lib/elevenlabs";
 
 const ASPECT_OPTIONS: Aspect[] = ["9:16", "16:9", "1:1"];
 
@@ -291,6 +292,48 @@ export default function HomePage() {
     playTimerRef.current = null;
     setPlayPosition(null);
   }, []);
+
+  const [voJobs, setVoJobs] = useState<Record<string, { status: "running" | "error"; error?: string }>>({});
+
+  const handleGenerateVO = useCallback(
+    async (segmentId: string) => {
+      const seg = project.vo_segments.find((v) => v.id === segmentId);
+      if (!seg) return;
+      const key = providerKeys.elevenlabs;
+      if (!key) {
+        if (
+          confirm(
+            "ElevenLabs needs an API key to generate voice. Open Providers to add one?",
+          )
+        ) {
+          setProvidersOpen(true);
+        }
+        return;
+      }
+      if (!seg.text.trim()) {
+        alert("Add text to the VO segment first.");
+        return;
+      }
+      setVoJobs((j) => ({ ...j, [segmentId]: { status: "running" } }));
+      try {
+        const dataUrl = await runElevenLabsTTS({
+          voice: seg.voice,
+          text: seg.text,
+          apiKey: key,
+        });
+        updateVOSegment(segmentId, { output_url: dataUrl });
+        setVoJobs((j) => {
+          const next = { ...j };
+          delete next[segmentId];
+          return next;
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setVoJobs((j) => ({ ...j, [segmentId]: { status: "error", error: message } }));
+      }
+    },
+    [project.vo_segments, providerKeys.elevenlabs, updateVOSegment],
+  );
 
   useEffect(() => () => {
     if (playTimerRef.current) clearTimeout(playTimerRef.current);
@@ -789,12 +832,12 @@ export default function HomePage() {
               >
                 <button
                   type="button"
-                  className="vo-seg"
+                  className={`vo-seg ${seg.output_url ? "voiced" : ""}`}
                   onClick={() =>
                     setEditingVOId(editingVOId === seg.id ? null : seg.id)
                   }
                 >
-                  v{i + 1} — <span className="vo-text">&ldquo;{seg.text}&rdquo;</span>
+                  v{i + 1} {seg.output_url ? "♪ " : ""}— <span className="vo-text">&ldquo;{seg.text}&rdquo;</span>
                 </button>
                 <Popover
                   open={editingVOId === seg.id}
@@ -804,7 +847,17 @@ export default function HomePage() {
                   <VOSegmentEditor
                     segment={seg}
                     projectDuration={project.duration_s}
+                    job={voJobs[seg.id]}
+                    hasKey={!!providerKeys.elevenlabs}
                     onChange={(patch) => updateVOSegment(seg.id, patch)}
+                    onGenerate={() => handleGenerateVO(seg.id)}
+                    onDismissError={() =>
+                      setVoJobs((j) => {
+                        const next = { ...j };
+                        delete next[seg.id];
+                        return next;
+                      })
+                    }
                     onRemove={() => {
                       removeVOSegment(seg.id);
                       setEditingVOId(null);
@@ -1511,12 +1564,27 @@ function TransitionEditor({
 function VOSegmentEditor({
   segment,
   projectDuration,
+  job,
+  hasKey,
   onChange,
+  onGenerate,
+  onDismissError,
   onRemove,
 }: {
-  segment: { id: string; text: string; voice: string; start_s: number; duration_s: number };
+  segment: {
+    id: string;
+    text: string;
+    voice: string;
+    start_s: number;
+    duration_s: number;
+    output_url?: string;
+  };
   projectDuration: number;
+  job?: { status: "running" | "error"; error?: string };
+  hasKey: boolean;
   onChange: (patch: Partial<{ text: string; voice: string; start_s: number; duration_s: number }>) => void;
+  onGenerate: () => void;
+  onDismissError: () => void;
   onRemove: () => void;
 }) {
   return (
@@ -1541,10 +1609,9 @@ function VOSegmentEditor({
             value={segment.voice}
             onChange={(e) => onChange({ voice: e.target.value })}
           >
-            <option value="default">Default</option>
-            <option value="warm">Warm</option>
-            <option value="cool">Cool</option>
-            <option value="gravel">Gravel</option>
+            {voiceList().map((v) => (
+              <option key={v.value} value={v.value}>{v.label}</option>
+            ))}
           </select>
         </Field>
         <Field label={`Start ${segment.start_s.toFixed(1)}s`}>
@@ -1567,6 +1634,32 @@ function VOSegmentEditor({
             onChange={(e) => onChange({ duration_s: Number(e.target.value) })}
           />
         </Field>
+      </div>
+      {segment.output_url ? (
+        <Field label="Preview">
+          <audio src={segment.output_url} controls className="vo-audio" />
+        </Field>
+      ) : null}
+      {job?.status === "error" ? (
+        <div className="vo-error">
+          <span>Error: {job.error}</span>
+          <button type="button" className="btn ghost vo-error-dismiss" onClick={onDismissError}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+      <div className="gen-row">
+        <span className={`gen-cost ${!hasKey ? "warn" : ""}`}>
+          {!hasKey ? "⊘ ElevenLabs key required" : "ElevenLabs · ~$0.001 per char"}
+        </span>
+        <button
+          type="button"
+          className="btn primary"
+          disabled={job?.status === "running"}
+          onClick={onGenerate}
+        >
+          {job?.status === "running" ? "● Generating…" : "⏵ Generate VO"}
+        </button>
       </div>
     </div>
   );
