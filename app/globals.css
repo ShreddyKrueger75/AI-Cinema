@@ -1353,6 +1353,28 @@ textarea.inline-edit { resize: vertical; min-height: 60px; width: 100%; padding:
 .clip-act:disabled { opacity: 0.3; cursor: not-allowed; }
 .clip-act.remove:hover { color: var(--color-blood); border-color: var(--color-blood); }
 
+.clip-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: transparent;
+  border: none;
+  border-right: 2px solid transparent;
+  cursor: ew-resize;
+  z-index: 4;
+  opacity: 0;
+  color: var(--color-blood);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  padding: 0;
+  user-select: none;
+}
+.clip:hover .clip-resize-handle { opacity: 1; }
+.clip-resize-handle:hover { border-right-color: var(--color-blood); background: var(--color-blood-soft); }
+
 .clip-insert {
   position: absolute;
   right: 0;

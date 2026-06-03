@@ -451,6 +451,31 @@ export default function HomePage() {
   const [lookOpen, setLookOpen] = useState<null | "brief" | "grade" | "music" | "title">(null);
   const [dragSectionId, setDragSectionId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; side: "before" | "after" } | null>(null);
+  const [resizingSection, setResizingSection] = useState<{
+    id: string;
+    startX: number;
+    origDuration: number;
+    pxPerSec: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!resizingSection) return;
+    const local = resizingSection;
+    function onMove(e: PointerEvent) {
+      const dxPx = e.clientX - local.startX;
+      const dxSec = dxPx / local.pxPerSec;
+      let next = Math.round((local.origDuration + dxSec) * 2) / 2;
+      next = Math.max(0.5, Math.min(60, next));
+      useStore.getState().updateSection(local.id, { duration_s: next });
+    }
+    function onUp() { setResizingSection(null); }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [resizingSection]);
   const [renderOpen, setRenderOpen] = useState(false);
   const [providersOpen, setProvidersOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -732,6 +757,9 @@ export default function HomePage() {
 
   const clipsCount = project.sections.length;
   const totalCols = Math.max(1, clipsCount);
+  const tlGridCols = project.sections.length > 0
+    ? project.sections.map((s) => `${Math.max(0.1, s.duration_s)}fr`).join(" ")
+    : "1fr";
 
   const handleExport = () => downloadProjectJSON(project);
   const handleImport = async () => {
@@ -1170,7 +1198,7 @@ export default function HomePage() {
 
         <div
           className="ruler clickable"
-          style={{ gridTemplateColumns: `repeat(${totalCols}, 1fr)` }}
+          style={{ gridTemplateColumns: tlGridCols }}
           onClick={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -1196,7 +1224,7 @@ export default function HomePage() {
 
         <div
           className="clips-row"
-          style={{ gridTemplateColumns: `repeat(${totalCols}, 1fr)` }}
+          style={{ gridTemplateColumns: tlGridCols }}
         >
           {project.sections.map((section) => {
             const isActive = section.id === activeSectionId;
@@ -1377,6 +1405,26 @@ export default function HomePage() {
                   )}
                   <span className="clip-dur">{section.duration_s.toFixed(1)}s</span>
                 </div>
+                <button
+                  type="button"
+                  className="clip-resize-handle"
+                  title="Drag to resize duration"
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    const clipsRow = (e.currentTarget.closest(".clips-row") as HTMLElement) ?? null;
+                    const rowWidth = clipsRow?.getBoundingClientRect().width ?? 800;
+                    const pxPerSec = rowWidth / Math.max(1, project.duration_s);
+                    setResizingSection({
+                      id: section.id,
+                      startX: e.clientX,
+                      origDuration: section.duration_s,
+                      pxPerSec,
+                    });
+                  }}
+                >
+                  ⇔
+                </button>
                 <span className="popover-anchor clip-insert">
                   <button
                     type="button"
