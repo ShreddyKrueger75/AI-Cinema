@@ -130,10 +130,17 @@ function buildImageInput(opts: RunImageOpts): Record<string, unknown> {
   };
 }
 
-export type ReplicateMotionModel = "minimax-video-01";
+export type ReplicateMotionModel =
+  | "minimax-video-01"
+  | "kling-2.0"
+  | "luma-dream-machine"
+  | "pika-2.0";
 
 const MOTION_MODEL_SLUGS: Record<ReplicateMotionModel, string> = {
   "minimax-video-01": "minimax/video-01",
+  "kling-2.0": "kwaivgi/kling-v1.6-standard",
+  "luma-dream-machine": "luma/ray-flash-2-720p",
+  "pika-2.0": "pika/pika-v2.2-720p",
 };
 
 export function isReplicateMotionModel(id: string): id is ReplicateMotionModel {
@@ -144,16 +151,43 @@ export type RunMotionOpts = {
   model: ReplicateMotionModel;
   prompt: string;
   firstFrameUrl: string;
+  durationSeconds: number;
+  aspect: Aspect;
   apiToken: string;
   signal?: AbortSignal;
 };
 
 function buildMotionInput(opts: RunMotionOpts): Record<string, unknown> {
+  const dur = Math.max(3, Math.min(10, Math.round(opts.durationSeconds)));
   if (opts.model === "minimax-video-01") {
     return {
       prompt: opts.prompt,
       first_frame_image: opts.firstFrameUrl,
       prompt_optimizer: false,
+    };
+  }
+  if (opts.model === "kling-2.0") {
+    return {
+      prompt: opts.prompt,
+      start_image: opts.firstFrameUrl,
+      duration: dur >= 8 ? 10 : 5,
+      aspect_ratio: opts.aspect,
+      cfg_scale: 0.5,
+    };
+  }
+  if (opts.model === "luma-dream-machine") {
+    return {
+      prompt: opts.prompt,
+      start_image_url: opts.firstFrameUrl,
+      aspect_ratio: opts.aspect,
+      loop: false,
+    };
+  }
+  if (opts.model === "pika-2.0") {
+    return {
+      prompt: opts.prompt,
+      image: opts.firstFrameUrl,
+      aspect_ratio: opts.aspect,
     };
   }
   return { prompt: opts.prompt, image: opts.firstFrameUrl };

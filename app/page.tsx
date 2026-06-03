@@ -1946,6 +1946,8 @@ function FlowPanel({
           model: modelId,
           prompt: composedPrompt,
           firstFrameUrl: stillToUse.output_url,
+          durationSeconds: activeVersion.motion.duration_s || section.duration_s,
+          aspect: project.aspect,
           apiToken: token,
         });
         updateClipVersion(section.id, activeVersion.id, {
