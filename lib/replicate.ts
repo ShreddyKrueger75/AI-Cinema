@@ -89,8 +89,13 @@ export type RunImageOpts = {
   prompt: string;
   aspect: Aspect;
   apiToken: string;
+  referenceImageUrl?: string;
   signal?: AbortSignal;
 };
+
+export function imageModelSupportsReference(model: ReplicateImageModel): boolean {
+  return model === "sdxl";
+}
 
 function buildImageInput(opts: RunImageOpts): Record<string, unknown> {
   const aspect_ratio = opts.aspect;
@@ -116,13 +121,18 @@ function buildImageInput(opts: RunImageOpts): Record<string, unknown> {
   }
   if (opts.model === "sdxl") {
     const [w, h] = aspect_ratio === "9:16" ? [768, 1344] : aspect_ratio === "16:9" ? [1344, 768] : [1024, 1024];
-    return {
+    const input: Record<string, unknown> = {
       prompt: opts.prompt,
       width: w,
       height: h,
       num_outputs: 1,
       refine: "expert_ensemble_refiner",
     };
+    if (opts.referenceImageUrl) {
+      input.image = opts.referenceImageUrl;
+      input.prompt_strength = 0.68;
+    }
+    return input;
   }
   return {
     prompt: opts.prompt,

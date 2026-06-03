@@ -43,6 +43,7 @@ import { useGenState, stillJobKey, motionJobKey, type GenSlot } from "@/lib/gens
 import {
   composePromptWithBrief,
   fetchAsDataUrl,
+  imageModelSupportsReference,
   isReplicateImageModel,
   isReplicateMotionModel,
   isReplicateMusicModel,
@@ -50,6 +51,7 @@ import {
   runReplicateMotion,
   runReplicateMusic,
 } from "@/lib/replicate";
+import { extractLastFrameDataUrl, parseLastFrameRef } from "@/lib/video";
 import { runElevenLabsMusic, runElevenLabsTTS, voiceList } from "@/lib/elevenlabs";
 import { describeRenderPlan, renderProject, type RenderProgress } from "@/lib/render";
 import { buildCubeLUT } from "@/lib/grade";
@@ -1874,11 +1876,38 @@ function FlowPanel({
       const token = providerKeys.replicate!;
       setJob(jobKey, { status: "running", startedAt: Date.now() });
       try {
+        let referenceImageUrl: string | undefined;
+        const refSectionId = parseLastFrameRef(activeStill.input_ref);
+        if (refSectionId) {
+          const refSection = project.sections.find((s) => s.id === refSectionId);
+          const refVersion = refSection?.versions.find(
+            (v) => v.id === refSection.active_version_id,
+          );
+          if (refVersion && refVersion.kind === "clip" && refVersion.output_url) {
+            const out = refVersion.output_url;
+            if (/^https?:\/\//.test(out)) {
+              referenceImageUrl = await extractLastFrameDataUrl(out);
+            } else if (out.startsWith("kenburns:")) {
+              const stillRef = refVersion.still_ref ?? refSection?.active_still_id ?? null;
+              const refStill = stillRef
+                ? refSection?.stills.find((st) => st.id === stillRef)
+                : undefined;
+              referenceImageUrl = refStill?.output_url;
+            }
+          }
+        }
+        if (!referenceImageUrl && project.brief?.refs && project.brief.refs.length > 0) {
+          referenceImageUrl = project.brief.refs[0];
+        }
+        if (referenceImageUrl && !imageModelSupportsReference(modelId)) {
+          referenceImageUrl = undefined;
+        }
         const url = await runReplicateImage({
           model: modelId,
           prompt: composedPrompt,
           aspect: project.aspect,
           apiToken: token,
+          referenceImageUrl,
         });
         updateStill(section.id, activeStill.id, { output_url: url });
         clearJob(jobKey);
@@ -2379,6 +2408,28 @@ function ClipFlowBody({
             <div className="field-pill cost">{formatCost(stillCost)}</div>
           </Field>
         </div>
+        {activeStill ? (
+          <div className="ref-hint">
+            {(() => {
+              const refSectionId = parseLastFrameRef(activeStill.input_ref);
+              const briefRef = project.brief?.refs?.[0];
+              const supports = imageModelSupportsReference(activeStill.model as never);
+              if (refSectionId) {
+                const sec = project.sections.find((s) => s.id === refSectionId);
+                const label = sec ? `${sec.index.toString().padStart(2, "0")} last frame` : "previous frame";
+                return supports
+                  ? `→ ${label} feeds into the still as init image (prompt_strength 0.68)`
+                  : `→ ${label} captured but ignored; switch to SDXL for init-image continuity`;
+              }
+              if (briefRef) {
+                return supports
+                  ? `→ brief reference image used as init (prompt_strength 0.68)`
+                  : `→ brief reference image ignored; SDXL accepts an init image`;
+              }
+              return null;
+            })()}
+          </div>
+        ) : null}
 
         <div className="preview-row">
           <div

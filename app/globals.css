@@ -1025,6 +1025,14 @@ button.trans-marker {
 
 .gen-cost.warn { color: var(--color-warn); }
 
+.ref-hint {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--color-fg-muted);
+  padding: 4px 0 0;
+  font-style: italic;
+}
+
 /* ───────────── PROVIDERS DIALOG ───────────── */
 .providers-notice {
   padding: 12px 14px;
