@@ -39,6 +39,7 @@ import {
 } from "@/lib/providers";
 import { useLibrary, type LibraryItem, type LibraryKind } from "@/lib/library";
 import { TEMPLATES } from "@/lib/templates";
+import { useProjectLibrary } from "@/lib/projects";
 import { useGenState, stillJobKey, motionJobKey, type GenSlot } from "@/lib/genstate";
 import {
   composePromptWithBrief,
@@ -278,8 +279,16 @@ export default function HomePage() {
       Promise.resolve(useStore.persist.rehydrate()),
       Promise.resolve(useProviderKeys.persist.rehydrate()),
       Promise.resolve(useLibrary.persist.rehydrate()),
+      Promise.resolve(useProjectLibrary.persist.rehydrate()),
     ]).finally(() => setHydrated(true));
   }, []);
+
+  const projectStubs = useProjectLibrary((s) => s.order.map((id) => s.projects[id]).filter(Boolean));
+  const saveProjectToLibrary = useProjectLibrary((s) => s.saveProject);
+  const loadProjectFromLibrary = useProjectLibrary((s) => s.loadProject);
+  const renameProjectInLibrary = useProjectLibrary((s) => s.renameProject);
+  const deleteProjectFromLibrary = useProjectLibrary((s) => s.deleteProject);
+  const duplicateProjectInLibrary = useProjectLibrary((s) => s.duplicateProject);
 
   const configuredKeyCount = Object.values(providerKeys).filter((v) => v && v.trim()).length;
 
@@ -293,6 +302,7 @@ export default function HomePage() {
   const [renderOpen, setRenderOpen] = useState(false);
   const [providersOpen, setProvidersOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [projectsOpen, setProjectsOpen] = useState(false);
   const [playPosition, setPlayPosition] = useState<number | null>(null);
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -523,6 +533,109 @@ export default function HomePage() {
           </div>
         </div>
         <div className="project-actions">
+          <span className="popover-anchor">
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => setProjectsOpen((o) => !o)}
+              title="Project library"
+            >
+              ▤ Projects{projectStubs.length > 0 ? ` (${projectStubs.length})` : ""}
+            </button>
+            <Popover
+              open={projectsOpen}
+              onClose={() => setProjectsOpen(false)}
+              className="templates-menu"
+            >
+              <div className="templates-head">// PROJECT LIBRARY</div>
+              <button
+                type="button"
+                className="template-item"
+                onClick={() => {
+                  saveProjectToLibrary(project);
+                  setProjectsOpen(false);
+                }}
+              >
+                <span className="tpl-name">＋ Save current</span>
+                <span className="tpl-desc">snapshot &ldquo;{project.name}&rdquo; · {project.duration_s.toFixed(1)}s · {project.sections.length} sections</span>
+              </button>
+              {projectStubs.length === 0 ? (
+                <div className="proj-empty">no saved projects yet</div>
+              ) : (
+                projectStubs.map((p) => {
+                  const isOpen = p.id === project.id;
+                  return (
+                    <div key={p.id} className="proj-row">
+                      <button
+                        type="button"
+                        className={`template-item proj-pick ${isOpen ? "active" : ""}`}
+                        onClick={() => {
+                          if (isOpen) {
+                            setProjectsOpen(false);
+                            return;
+                          }
+                          if (project.updated_at) saveProjectToLibrary(project);
+                          const loaded = loadProjectFromLibrary(p.id);
+                          if (loaded) setProject(loaded);
+                          setProjectsOpen(false);
+                        }}
+                      >
+                        <span className="tpl-name">
+                          {isOpen ? "● " : ""}{p.name}
+                        </span>
+                        <span className="tpl-desc">
+                          {p.aspect.replace(":", " : ")} · {p.duration_s.toFixed(1)}s · {p.sections.length} sections · {new Date(p.updated_at).toLocaleDateString()}
+                        </span>
+                      </button>
+                      <div className="proj-actions">
+                        <button
+                          type="button"
+                          className="btn ghost proj-act"
+                          title="Rename"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const next = prompt("Rename project:", p.name);
+                            if (next && next.trim()) {
+                              renameProjectInLibrary(p.id, next.trim());
+                              if (isOpen) updateProjectMeta({ name: next.trim() });
+                            }
+                          }}
+                        >
+                          ✎
+                        </button>
+                        <button
+                          type="button"
+                          className="btn ghost proj-act"
+                          title="Duplicate"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const copy = duplicateProjectInLibrary(p.id);
+                            if (copy) setProject(copy);
+                            setProjectsOpen(false);
+                          }}
+                        >
+                          ⎘
+                        </button>
+                        <button
+                          type="button"
+                          className="btn ghost proj-act danger"
+                          title="Delete"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`Delete "${p.name}" from library? (current project stays loaded)`)) {
+                              deleteProjectFromLibrary(p.id);
+                            }
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </Popover>
+          </span>
           <span className="popover-anchor">
             <button
               type="button"
