@@ -406,8 +406,12 @@ export default function HomePage() {
   const [welcomeDismissed, setWelcomeDismissed] = useState(true);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (localStorage.getItem("ai-cinema:welcome-dismissed") !== "1") {
-      setWelcomeDismissed(false);
+    try {
+      if (localStorage.getItem("ai-cinema:welcome-dismissed") !== "1") {
+        setWelcomeDismissed(false);
+      }
+    } catch {
+      // storage disabled — keep dismissed
     }
   }, []);
   const dismissWelcome = () => {
