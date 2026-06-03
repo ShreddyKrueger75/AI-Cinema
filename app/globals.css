@@ -2249,6 +2249,163 @@ button.trans-marker {
   .wordmark .lockup { font-size: 12px; padding-left: 2px; }
 }
 
+/* ───────────── USER CHIP ───────────── */
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid var(--color-line);
+  color: var(--color-fg);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  padding: 3px 10px 3px 3px;
+  cursor: pointer;
+  transition: border-color .12s, color .12s;
+}
+.user-chip:hover { border-color: var(--color-blood-faint); color: var(--color-blood); }
+.user-avatar {
+  width: 18px;
+  height: 18px;
+  background: var(--color-blood);
+  color: var(--color-bg);
+  font-size: 10px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  letter-spacing: 0;
+}
+.user-email { font-size: 9px; letter-spacing: 0.18em; }
+.user-menu-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-line);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.user-menu-head strong { color: var(--color-fg); font-weight: 500; }
+.user-menu-head span { color: var(--color-fg-muted); }
+
+/* ───────────── AUTH PAGES ───────────── */
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 40px 20px;
+}
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-strong);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+}
+.auth-head { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.auth-wordmark { display: flex; align-items: baseline; gap: 12px; }
+.auth-wordmark .painted {
+  font-family: var(--font-painted);
+  font-size: 30px;
+  color: var(--color-blood);
+  transform: rotate(-2deg);
+  line-height: 0.9;
+}
+.auth-wordmark .lockup {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 14px;
+  letter-spacing: 0.32em;
+  color: var(--color-fg);
+  text-transform: uppercase;
+}
+.auth-tagline {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-fg-muted);
+  margin-top: 4px;
+}
+.auth-title {
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--color-fg);
+  margin: 14px 0 0;
+  font-weight: 500;
+}
+.auth-sub {
+  font-size: 11px;
+  color: var(--color-fg-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+.auth-error {
+  padding: 10px 12px;
+  border: 1px solid var(--color-blood-faint);
+  background: rgba(255, 77, 126, 0.08);
+  color: var(--color-blood);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 6px;
+}
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.auth-field > span {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-fg-faint);
+}
+.auth-field em { font-style: normal; color: var(--color-fg-ghost); }
+.auth-field input {
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  color: var(--color-fg);
+  font: inherit;
+  font-size: 13px;
+  padding: 10px 12px;
+  outline: none;
+}
+.auth-field input:focus { border-color: var(--color-blood-faint); }
+.auth-submit {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding: 12px 18px;
+  background: var(--color-blood);
+  color: var(--color-bg);
+  border: 1px solid var(--color-blood);
+  cursor: pointer;
+  transition: background .12s;
+}
+.auth-submit:hover { background: #ff6691; }
+.auth-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.auth-foot a { color: var(--color-fg-muted); border-bottom: 1px dashed transparent; padding-bottom: 1px; }
+.auth-foot a:hover { color: var(--color-blood); border-bottom-color: var(--color-blood-faint); }
+
 /* ───────────── FOOTER ───────────── */
 .footstrip {
   margin-top: 28px;

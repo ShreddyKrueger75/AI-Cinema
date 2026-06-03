@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono, Inter, Knewave } from "next/font/google";
+import { SessionProvider } from "next-auth/react";
 import "./globals.css";
 
 const jetbrainsMono = JetBrains_Mono({
@@ -31,7 +32,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${jetbrainsMono.variable} ${inter.variable} ${knewave.variable}`}>
-      <body>{children}</body>
+      <body>
+        <SessionProvider>{children}</SessionProvider>
+      </body>
     </html>
   );
 }

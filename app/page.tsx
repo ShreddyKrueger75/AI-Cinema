@@ -43,6 +43,7 @@ import { useProjectLibrary } from "@/lib/projects";
 import { useHistory } from "@/lib/history";
 import { toast, useToasts } from "@/lib/toast";
 import { useWaveform } from "@/lib/waveform";
+import { signOut, useSession } from "next-auth/react";
 import { useGenState, stillJobKey, motionJobKey, type GenSlot } from "@/lib/genstate";
 import {
   composePromptWithBrief,
@@ -803,7 +804,7 @@ export default function HomePage() {
         </div>
         <div className="right">
           <span>{hydrated ? "STATE // PERSISTED" : "STATE // EPHEMERAL"}</span>
-          <span>HELLO@JOHNLACROIX.COM</span>
+          <UserStatusChip />
         </div>
       </div>
 
@@ -2189,6 +2190,48 @@ function TitleCardLive({
 }
 
 /* ───────────── TOAST VIEWPORT ───────────── */
+
+function UserStatusChip() {
+  const { data: session, status } = useSession();
+  const [open, setOpen] = useState(false);
+  if (status === "loading") return <span>SESSION // …</span>;
+  if (!session?.user) {
+    return (
+      <a href="/login" className="status-link">SIGN IN</a>
+    );
+  }
+  const email = session.user.email ?? session.user.name ?? "";
+  const initial = (session.user.name ?? email).slice(0, 1).toUpperCase();
+  return (
+    <span className="popover-anchor">
+      <button
+        type="button"
+        className="user-chip"
+        onClick={() => setOpen((o) => !o)}
+        title="Account"
+      >
+        <span className="user-avatar">{initial}</span>
+        <span className="user-email">{email}</span>
+      </button>
+      <Popover open={open} onClose={() => setOpen(false)} className="menu" align="right">
+        <div className="user-menu-head">
+          <strong>{session.user.name ?? email}</strong>
+          {session.user.name ? <span>{email}</span> : null}
+        </div>
+        <button
+          type="button"
+          className="menu-item"
+          onClick={async () => {
+            setOpen(false);
+            await signOut({ redirect: false });
+          }}
+        >
+          Sign out
+        </button>
+      </Popover>
+    </span>
+  );
+}
 
 function ToastViewport() {
   const toasts = useToasts((s) => s.toasts);

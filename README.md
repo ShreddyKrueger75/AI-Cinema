@@ -30,11 +30,24 @@ Open `http://localhost:3000`. The first paint is fully usable with **zero keys**
 - **Render** — full `ffmpeg.wasm` pipeline: xfade transitions, VO + music mix, grade applied as a 3D LUT, MP4 export with `+faststart`.
 - **Persistence** — Zustand + localStorage for project, providers, and library. Export / import projects as JSON. Keys are never in the export.
 
+## Cloud accounts (optional)
+
+The editor works without login. Signing in adds cross-device sync for the project library and feel-layer presets.
+
+Auth.js v5 + Vercel KV is the backend. To enable accounts on your deploy:
+
+1. **Vercel dashboard → Storage → Create Database → KV.** Connect it to the project — that sets `KV_REST_API_URL` and `KV_REST_API_TOKEN` automatically.
+2. **Set `AUTH_SECRET`.** Generate one with `openssl rand -base64 32` and paste it into the project's Environment Variables.
+3. Redeploy. `/signup` and `/login` are live; the status bar gains a `SIGN IN` link, then a `you@email` chip with sign-out once authenticated.
+
+If `KV_REST_API_URL` is unset, the auth UI still renders but sign-up/sign-in returns a friendly "cloud accounts not configured" error.
+
 ## Stack
 
 - Next.js 15 (App Router) + TypeScript strict
 - React 19
-- Zustand for state (sliced: project, providers, library, gen-state)
+- Auth.js v5 (`next-auth@5`) + Vercel KV + bcryptjs for email/password accounts
+- Zustand for state (sliced: project, providers, library, gen-state, history, toasts)
 - Tailwind v4 for tokens
 - `@ffmpeg/ffmpeg` 0.12 for the render pipeline (needs COOP/COEP — set in `next.config.ts`)
 - Vercel static deploy
