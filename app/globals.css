@@ -1103,6 +1103,11 @@ button.trans-marker {
   color: var(--color-fg-muted);
   line-height: 1.5;
 }
+.provider-warn {
+  font-size: 11px;
+  color: var(--color-warn);
+  letter-spacing: 0.04em;
+}
 .provider-key {
   display: flex;
   gap: 6px;

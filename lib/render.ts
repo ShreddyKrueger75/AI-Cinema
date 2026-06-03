@@ -152,8 +152,20 @@ export function describeRenderPlan(project: Project): {
   return { ready: issues.length === 0, assets, issues, totalDuration };
 }
 
-let ffmpegSingleton: unknown | null = null;
+let ffmpegSingleton: any | null = null;
 let ffmpegLoadPromise: Promise<unknown> | null = null;
+
+export async function terminateFFmpeg(): Promise<void> {
+  if (ffmpegSingleton) {
+    try {
+      ffmpegSingleton.terminate();
+    } catch {
+      // best effort
+    }
+    ffmpegSingleton = null;
+    ffmpegLoadPromise = null;
+  }
+}
 
 async function ensureFFmpeg(onProgress?: (p: RenderProgress) => void): Promise<{
   ffmpeg: any;

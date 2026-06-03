@@ -53,7 +53,7 @@ import {
 } from "@/lib/replicate";
 import { extractLastFrameDataUrl, parseLastFrameRef } from "@/lib/video";
 import { runElevenLabsMusic, runElevenLabsTTS, voiceList } from "@/lib/elevenlabs";
-import { describeRenderPlan, renderProject, type RenderProgress } from "@/lib/render";
+import { describeRenderPlan, renderProject, terminateFFmpeg, type RenderProgress } from "@/lib/render";
 import { buildCubeLUT } from "@/lib/grade";
 
 const ASPECT_OPTIONS: Aspect[] = ["9:16", "16:9", "1:1"];
@@ -1882,6 +1882,8 @@ function FlowPanel({
     }
   };
 
+  const COST_CAP = 0.5;
+
   const handleGenerateStill = async () => {
     if (!activeStill) return;
     const jobKey = stillJobKey(section.id, activeStill.id);
@@ -1892,6 +1894,13 @@ function FlowPanel({
       activeStill.image_prompt,
       project.brief?.visual,
     );
+    const estCost = imageModelCost(modelId);
+    if (estCost > COST_CAP) {
+      const ok = confirm(
+        `Heads up — this still costs about $${estCost.toFixed(2)} (cap is $${COST_CAP.toFixed(2)}). Generate anyway?`,
+      );
+      if (!ok) return;
+    }
 
     if (isImageModelFree(modelId)) {
       const url = pollinationsUrl(
@@ -1968,6 +1977,13 @@ function FlowPanel({
     if (jobs[jobKey]?.status === "running") return;
 
     const modelId = activeVersion.motion.model;
+    const estMotionCost = motionModelCost(modelId, activeVersion.motion.duration_s);
+    if (estMotionCost > COST_CAP) {
+      const ok = confirm(
+        `Heads up — this motion costs about $${estMotionCost.toFixed(2)} (cap is $${COST_CAP.toFixed(2)}). Generate anyway?`,
+      );
+      if (!ok) return;
+    }
 
     if (isMotionModelFree(modelId)) {
       const stillToUse = referencedStill;
@@ -2814,9 +2830,11 @@ function RenderDialog({ project, onClose }: { project: Project; onClose: () => v
     }
   };
 
-  const handleCancelRender = () => {
+  const handleCancelRender = async () => {
     abortRef.current?.abort();
+    await terminateFFmpeg();
     setRenderProgress(null);
+    setRenderError("Render cancelled.");
   };
 
   const handleDownload = () => {
@@ -3138,8 +3156,13 @@ function ProviderRow({
   const [draft, setDraft] = useState("");
   const [show, setShow] = useState(false);
 
+  const malformedHint =
+    draft.trim() && keyPrefix && !draft.trim().startsWith(keyPrefix)
+      ? `Doesn't start with ${keyPrefix} — double-check before saving`
+      : null;
   const commit = () => {
     if (!draft.trim()) return;
+    if (malformedHint && !confirm(`${malformedHint}. Save anyway?`)) return;
     onSetKey(draft);
     setDraft("");
     setEditing(false);
@@ -3161,6 +3184,7 @@ function ProviderRow({
         </div>
       </div>
       {notes ? <div className="provider-notes">{notes}</div> : null}
+      {malformedHint && editing ? <div className="provider-warn">⚠ {malformedHint}</div> : null}
       <div className="provider-key">
         {editing ? (
           <>
