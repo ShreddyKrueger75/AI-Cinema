@@ -649,9 +649,87 @@ button.clip-version:hover { border-color: var(--color-blood-faint); }
 
 .waveform { display: block; }
 
-.vo-seg { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; }
 .vo-seg-head { display: block; line-height: 1.3; }
 .vo-seg-wave { width: 100%; }
+
+.vo-row { display: flex; align-items: stretch; position: relative; }
+.vo-track {
+  position: relative;
+  flex: 1;
+  height: 64px;
+  border: 1px solid var(--color-line);
+  background: var(--color-bg);
+  overflow: visible;
+}
+.vo-tick {
+  position: absolute;
+  top: 0; bottom: 0; width: 1px;
+  background: var(--color-line);
+  pointer-events: none;
+}
+.vo-track .vo-seg {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  display: flex;
+  align-items: stretch;
+  background: var(--color-blood-soft);
+  border: 1px solid var(--color-blood-faint);
+  min-width: 14px;
+  overflow: hidden;
+  cursor: grab;
+  font-size: 10px;
+}
+.vo-track .vo-seg.voiced { border-color: var(--color-blood); }
+.vo-track .vo-seg.dragging { cursor: grabbing; border-color: var(--color-blood); box-shadow: 0 0 8px var(--color-blood-faint); }
+.vo-track .vo-seg-resize {
+  flex: 0 0 10px;
+  background: transparent;
+  border: none;
+  border-right: 1px dashed var(--color-blood-faint);
+  color: var(--color-blood);
+  font-size: 8px;
+  cursor: ew-resize;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+.vo-track .vo-seg-resize.right { border-right: none; border-left: 1px dashed var(--color-blood-faint); }
+.vo-track .vo-seg-resize:hover { background: var(--color-blood-soft); }
+.vo-track .vo-seg-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-fg);
+}
+.vo-track .vo-seg-body .vo-text { color: var(--color-fg-muted); font-style: italic; }
+.vo-track .vo-seg-head {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vo-add-btn {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  background: transparent;
+  border: 1px dashed var(--color-fg-faint);
+  color: var(--color-fg-faint);
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: color .12s, border-color .12s;
+}
+.vo-add-btn:hover { color: var(--color-blood); border-color: var(--color-blood-faint); }
+.vo-pop-wrap { position: absolute; bottom: 100%; left: 0; }
 
 .grade-strip {
   grid-column: 1 / -1;
