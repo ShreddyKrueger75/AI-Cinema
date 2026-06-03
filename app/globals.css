@@ -190,15 +190,27 @@ button {
 }
 .stage-canvas {
   position: relative;
-  width: 100%;
-  max-width: 480px;
+  width: auto;
+  max-width: 100%;
+  max-height: 56vh;
   background: #000;
   border: 1px solid var(--color-line-strong);
   overflow: hidden;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 }
-.stage-canvas.aspect-16-9 { max-width: 720px; }
-.stage-canvas.aspect-1-1 { max-width: 520px; }
+.stage-canvas.aspect-9-16 {
+  height: 56vh;
+  width: calc(56vh * 9 / 16);
+  max-width: 100%;
+}
+.stage-canvas.aspect-16-9 {
+  width: 100%;
+  max-width: 760px;
+}
+.stage-canvas.aspect-1-1 {
+  width: 100%;
+  max-width: 520px;
+}
 
 .stage-video,
 .stage-img {
