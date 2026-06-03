@@ -1936,6 +1936,78 @@ button.trans-marker {
 }
 .cost-value.muted { color: var(--color-fg-muted); }
 
+/* ───────────── COMMAND PALETTE ───────────── */
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 220;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  animation: modal-in .12s ease-out;
+}
+.palette {
+  width: min(560px, 92vw);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-strong);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.8);
+  display: flex;
+  flex-direction: column;
+}
+.palette-input {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  background: var(--color-elev);
+  color: var(--color-fg);
+  border: none;
+  border-bottom: 1px solid var(--color-line);
+  padding: 16px 18px;
+  outline: none;
+  letter-spacing: 0.02em;
+}
+.palette-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.palette-item {
+  background: transparent;
+  border: 1px solid transparent;
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--color-fg);
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+.palette-item.active {
+  background: var(--color-blood-soft);
+  border-color: var(--color-blood-faint);
+  color: var(--color-blood);
+}
+.palette-empty {
+  padding: 14px 18px;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--color-fg-faint);
+  text-transform: uppercase;
+}
+.palette-foot {
+  border-top: 1px solid var(--color-line);
+  background: var(--color-elev);
+  padding: 8px 14px;
+  display: flex;
+  gap: 14px;
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-fg-faint);
+}
+
 /* ───────────── HELP / SHORTCUTS ───────────── */
 .shortcut-grid { display: flex; flex-direction: column; gap: 4px; }
 .shortcut-row {

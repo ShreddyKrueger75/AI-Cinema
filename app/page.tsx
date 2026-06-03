@@ -481,6 +481,7 @@ export default function HomePage() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [playPosition, setPlayPosition] = useState<number | null>(null);
   const [playheadSeconds, setPlayheadSeconds] = useState<number>(0);
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -663,6 +664,11 @@ export default function HomePage() {
         toast.success("Saved to library", project.name);
         return;
       }
+      if (mod && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+        return;
+      }
       if (editable) return;
 
       if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
@@ -671,6 +677,7 @@ export default function HomePage() {
         return;
       }
       if (e.key === "Escape") {
+        if (paletteOpen) { setPaletteOpen(false); return; }
         if (helpOpen) { setHelpOpen(false); return; }
         if (renderOpen) { setRenderOpen(false); return; }
         if (providersOpen) { setProvidersOpen(false); return; }
@@ -1647,6 +1654,98 @@ export default function HomePage() {
       ) : null}
 
       {helpOpen ? <HelpDialog onClose={() => setHelpOpen(false)} /> : null}
+
+      {paletteOpen ? (
+        <CommandPalette
+          onClose={() => setPaletteOpen(false)}
+          actions={[
+            {
+              id: "new-clip",
+              label: "New clip section",
+              keywords: "add insert clip",
+              run: () => { addClipSection(null); toast.info("Added clip"); },
+            },
+            {
+              id: "new-title",
+              label: "New title card",
+              keywords: "add insert title card",
+              run: () => { addTitleSection(null); toast.info("Added title"); },
+            },
+            {
+              id: "save",
+              label: "Save snapshot to library",
+              keywords: "save snapshot library s",
+              run: () => { saveProjectToLibrary(project); toast.success("Saved to library", project.name); },
+            },
+            {
+              id: "export",
+              label: "Export project JSON",
+              keywords: "export json download",
+              run: handleExport,
+            },
+            {
+              id: "import",
+              label: "Import project JSON",
+              keywords: "import upload",
+              run: handleImport,
+            },
+            {
+              id: "render",
+              label: "Open Render dialog",
+              keywords: "render mp4 ffmpeg",
+              run: () => setRenderOpen(true),
+            },
+            {
+              id: "providers",
+              label: "Manage provider keys",
+              keywords: "keys providers replicate elevenlabs runway api",
+              run: () => setProvidersOpen(true),
+            },
+            {
+              id: "templates",
+              label: "Browse project templates",
+              keywords: "templates starter blank product reveal",
+              run: () => setTemplatesOpen(true),
+            },
+            {
+              id: "projects",
+              label: "Open project library",
+              keywords: "projects library switch open",
+              run: () => setProjectsOpen(true),
+            },
+            {
+              id: "reset",
+              label: "Reset to default project",
+              keywords: "reset wipe new",
+              run: handleReset,
+            },
+            {
+              id: "lut",
+              label: "Export grade as .cube LUT",
+              keywords: "lut grade export color",
+              run: handleExportLUT,
+            },
+            {
+              id: "play",
+              label: playPosition !== null ? "Stop preview" : "Play preview",
+              keywords: "play preview pause stop space",
+              run: () => (playPosition !== null ? stopPreview() : startPreview()),
+            },
+            {
+              id: "help",
+              label: "Show keyboard shortcuts",
+              keywords: "help shortcuts keys ?",
+              run: () => setHelpOpen(true),
+            },
+            ...project.sections.map((s) => ({
+              id: `goto-${s.id}`,
+              label: `Go to section ${s.index.toString().padStart(2, "0")} — ${s.title}`,
+              keywords: `section ${s.title} ${s.type}`,
+              run: () => setActiveSection(s.id),
+            })),
+          ]}
+        />
+      ) : null}
 
       <div className="footstrip">
         <span>// AI CINEMA · BUILT FOR THE LOVE OF THE GAME · MIT</span>
@@ -4100,6 +4199,114 @@ function RenderDialog({ project, onClose }: { project: Project; onClose: () => v
   );
 }
 
+/* ───────────── COMMAND PALETTE ───────────── */
+
+type PaletteAction = {
+  id: string;
+  label: string;
+  keywords?: string;
+  run: () => void;
+};
+
+function CommandPalette({
+  actions,
+  onClose,
+}: {
+  actions: PaletteAction[];
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [highlightIdx, setHighlightIdx] = useState(0);
+  const listRef = useRef<HTMLDivElement | null>(null);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return actions.slice(0, 60);
+    const tokens = q.split(/\s+/);
+    return actions
+      .map((a) => {
+        const hay = `${a.label} ${a.keywords ?? ""}`.toLowerCase();
+        let score = 0;
+        for (const t of tokens) {
+          const idx = hay.indexOf(t);
+          if (idx < 0) return null;
+          score += 100 - Math.min(99, idx);
+        }
+        return { a, score };
+      })
+      .filter((x): x is { a: PaletteAction; score: number } => x !== null)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 60)
+      .map((x) => x.a);
+  }, [query, actions]);
+
+  useEffect(() => {
+    setHighlightIdx(0);
+  }, [query]);
+
+  useEffect(() => {
+    const el = listRef.current?.querySelector(`[data-idx="${highlightIdx}"]`) as HTMLElement | null;
+    el?.scrollIntoView({ block: "nearest" });
+  }, [highlightIdx]);
+
+  return (
+    <div className="palette-overlay" onClick={onClose}>
+      <div className="palette" onClick={(e) => e.stopPropagation()} role="dialog">
+        <input
+          autoFocus
+          className="palette-input"
+          type="text"
+          placeholder="Type a command…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setHighlightIdx((i) => Math.min(filtered.length - 1, i + 1));
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setHighlightIdx((i) => Math.max(0, i - 1));
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              const action = filtered[highlightIdx];
+              if (action) {
+                action.run();
+                onClose();
+              }
+            }
+          }}
+        />
+        <div className="palette-list" ref={listRef}>
+          {filtered.length === 0 ? (
+            <div className="palette-empty">No matches</div>
+          ) : (
+            filtered.map((a, i) => (
+              <button
+                key={a.id}
+                data-idx={i}
+                type="button"
+                className={`palette-item ${i === highlightIdx ? "active" : ""}`}
+                onMouseEnter={() => setHighlightIdx(i)}
+                onClick={() => {
+                  a.run();
+                  onClose();
+                }}
+              >
+                {a.label}
+              </button>
+            ))
+          )}
+        </div>
+        <div className="palette-foot">
+          <span>↑↓ navigate</span>
+          <span>↵ run</span>
+          <span>esc close</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ───────────── HELP DIALOG ───────────── */
 
 function HelpDialog({ onClose }: { onClose: () => void }) {
@@ -4128,6 +4335,12 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
       title: "// PLAYBACK",
       items: [
         { keys: ["Space"], label: "Preview / stop timeline" },
+      ],
+    },
+    {
+      title: "// COMMAND",
+      items: [
+        { keys: [`${mod} K`], label: "Command palette" },
       ],
     },
     {
