@@ -2003,6 +2003,7 @@ function PreviewStage({
   onStop: () => void;
 }) {
   const setActiveSection = useStore((s) => s.setActiveSection);
+  const updateProjectMeta = useStore((s) => s.updateProjectMeta);
 
   const currentIndex = useMemo(() => {
     if (playPosition !== null) return playPosition;
@@ -2139,7 +2140,22 @@ function PreviewStage({
           <span>{formatTimecode(startSeconds)}</span>
           <span className="stage-divider">/</span>
           <span>{formatTimecode(total)}</span>
-          <span className="stage-aspect">{project.aspect.replace(":", " : ")}</span>
+        </div>
+        <div className="stage-aspect-picker" role="radiogroup" aria-label="Aspect ratio">
+          {ASPECT_OPTIONS.map((a) => (
+            <button
+              key={a}
+              type="button"
+              role="radio"
+              aria-checked={project.aspect === a}
+              className={`aspect-pill ${project.aspect === a ? "active" : ""} aspect-${a.replace(":", "-")}`}
+              onClick={() => updateProjectMeta({ aspect: a })}
+              title={`Set whole video to ${a}`}
+            >
+              <span className={`aspect-glyph glyph-${a.replace(":", "-")}`} aria-hidden />
+              <span className="aspect-label">{a}</span>
+            </button>
+          ))}
         </div>
       </div>
     </div>

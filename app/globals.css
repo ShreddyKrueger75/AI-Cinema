@@ -400,6 +400,52 @@ button {
   text-transform: uppercase;
 }
 
+.stage-aspect-picker {
+  display: inline-flex;
+  margin-left: 12px;
+  border: 1px solid var(--color-line-strong);
+  background: var(--color-bg);
+}
+.aspect-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: var(--color-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  border-right: 1px solid var(--color-line-strong);
+  transition: color .12s, background .12s;
+}
+.aspect-pill:last-child { border-right: none; }
+.aspect-pill:hover:not(.active) { color: var(--color-fg); background: var(--color-elev); }
+.aspect-pill.active {
+  color: var(--color-blood);
+  background: var(--color-blood-soft);
+}
+.aspect-pill.active .aspect-glyph { border-color: var(--color-blood); background: var(--color-blood-faint); }
+
+.aspect-glyph {
+  display: inline-block;
+  border: 1.5px solid var(--color-fg-muted);
+  background: transparent;
+}
+.aspect-glyph.glyph-16-9 { width: 18px; height: 11px; }
+.aspect-glyph.glyph-9-16 { width: 11px; height: 18px; }
+.aspect-glyph.glyph-1-1  { width: 14px; height: 14px; }
+.aspect-pill:hover:not(.active) .aspect-glyph { border-color: var(--color-fg); }
+
+.aspect-label { letter-spacing: 0.08em; }
+
+@media (max-width: 840px) {
+  .stage-aspect-picker { margin-left: 0; margin-top: 8px; width: 100%; }
+  .aspect-pill { flex: 1; justify-content: center; }
+}
+
 /* ───────────── TIMELINE ───────────── */
 .timeline-wrap {
   margin-top: 36px;
