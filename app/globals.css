@@ -569,7 +569,16 @@ button {
   border: 1px solid var(--color-blood-faint);
 }
 .clip.active .clip-num { color: var(--color-blood); }
-.clip-title { font-size: 13px; color: var(--color-fg); margin-bottom: 8px; }
+.clip-title {
+  font-size: 13px;
+  color: var(--color-fg);
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+.clip-note-mark { font-size: 10px; opacity: 0.85; }
 .clip.empty .clip-title { color: var(--color-fg-faint); font-style: italic; }
 .clip-meta {
   display: flex;
@@ -800,6 +809,32 @@ button.clip-version:hover { border-color: var(--color-blood-faint); }
   letter-spacing: 0.12em;
 }
 .version-dd .caret { color: var(--color-fg-muted); font-size: 13px; }
+
+.flow-notes {
+  border-bottom: 1px solid var(--color-line);
+  padding: 14px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--color-bg);
+}
+.flow-notes-label {
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--color-fg-faint);
+}
+.flow-notes-input {
+  background: transparent;
+  border: 1px solid var(--color-line);
+  color: var(--color-fg);
+  font: inherit;
+  font-size: 12px;
+  padding: 8px 10px;
+  resize: vertical;
+  outline: none;
+}
+.flow-notes-input:focus { border-color: var(--color-blood-faint); }
 
 .flow-body { padding: 26px 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
 .stage { padding: 0 22px; border-right: 1px solid var(--color-line); }

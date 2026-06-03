@@ -41,6 +41,7 @@ export type Section = {
   type: "clip" | "title";
   title: string;
   duration_s: number;
+  notes?: string;
   versions: Version[];
   active_version_id: string | null;
   stills: Still[];

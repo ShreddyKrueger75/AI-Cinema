@@ -31,7 +31,7 @@ export type StoreState = {
   setActiveVersion: (sectionId: string, versionId: string) => void;
   setActiveStill: (sectionId: string, stillId: string) => void;
 
-  updateSection: (sectionId: string, patch: { title?: string; duration_s?: number }) => void;
+  updateSection: (sectionId: string, patch: { title?: string; duration_s?: number; notes?: string }) => void;
   addClipSection: (afterSectionId?: string | null) => void;
   addTitleSection: (afterSectionId?: string | null) => void;
   removeSection: (sectionId: string) => void;
@@ -219,6 +219,7 @@ export const useStore = create<StoreState>()(
             ...s,
             ...(patch.title !== undefined ? { title: patch.title } : {}),
             ...(patch.duration_s !== undefined ? { duration_s: patch.duration_s } : {}),
+            ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
           }));
           if (patch.duration_s !== undefined) {
             next = reindexAndRetotal(next);

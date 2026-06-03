@@ -1370,7 +1370,12 @@ export default function HomePage() {
                   }
                   return <div className="clip-thumb empty">no still</div>;
                 })()}
-                <div className="clip-title">{section.title}</div>
+                <div className="clip-title">
+                  {section.title}
+                  {section.notes && section.notes.trim().length > 0 ? (
+                    <span className="clip-note-mark" title={section.notes}>💬</span>
+                  ) : null}
+                </div>
                 <div className="clip-meta">
                   {empty ? (
                     <span className="clip-version">{versionLabel}</span>
@@ -3302,6 +3307,17 @@ function FlowPanel({
             ✕ Close
           </button>
         </div>
+      </div>
+
+      <div className="flow-notes">
+        <span className="flow-notes-label">💬 Director&apos;s note</span>
+        <textarea
+          className="flow-notes-input"
+          rows={2}
+          placeholder="What is this section for? Continuity cues, blocking, the joke..."
+          value={section.notes ?? ""}
+          onChange={(e) => updateSection(section.id, { notes: e.target.value })}
+        />
       </div>
 
       {section.type === "title" ? (
