@@ -31,7 +31,12 @@ function planAssets(project: Project): Asset[] {
   const out: Asset[] = [];
   for (const s of project.sections) {
     if (s.type === "title") {
-      out.push({ sectionId: s.id, kind: "title", duration_s: s.duration_s });
+      const v = s.versions.find((x) => x.id === s.active_version_id);
+      if (v && v.kind === "title" && v.text.trim().length > 0) {
+        out.push({ sectionId: s.id, kind: "title", duration_s: s.duration_s });
+      } else {
+        out.push({ sectionId: s.id, kind: "missing", duration_s: s.duration_s });
+      }
       continue;
     }
     const active = s.versions.find((v) => v.id === s.active_version_id);
@@ -60,6 +65,58 @@ function planAssets(project: Project): Asset[] {
   return out;
 }
 
+function renderTitleCardPng(opts: {
+  text: string;
+  w: number;
+  h: number;
+  font: string;
+  color: string;
+  bg: string;
+}): Uint8Array {
+  const canvas = document.createElement("canvas");
+  canvas.width = opts.w;
+  canvas.height = opts.h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas 2d context not available");
+  ctx.fillStyle = opts.bg;
+  ctx.fillRect(0, 0, opts.w, opts.h);
+  const fontSize = Math.round(Math.min(opts.w, opts.h) * 0.085);
+  ctx.fillStyle = opts.color;
+  ctx.font = `bold ${fontSize}px ${opts.font.split(" ")[0] || "sans-serif"}, system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const lines = wrapLines(ctx, opts.text.toUpperCase(), opts.w * 0.85);
+  const lineHeight = fontSize * 1.2;
+  const totalHeight = lines.length * lineHeight;
+  const startY = opts.h / 2 - totalHeight / 2 + lineHeight / 2;
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], opts.w / 2, startY + i * lineHeight);
+  }
+  const dataUrl = canvas.toDataURL("image/png");
+  const base64 = dataUrl.split(",")[1];
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let current = "";
+  for (const w of words) {
+    const candidate = current ? `${current} ${w}` : w;
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+    } else {
+      if (current) lines.push(current);
+      current = w;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
 export type RenderPlanIssue = {
   sectionId: string;
   index: number;
@@ -86,17 +143,7 @@ export function describeRenderPlan(project: Project): {
         reason:
           sec.type === "clip"
             ? "no rendered video and no still"
-            : "title sections render in a later pass",
-      });
-    }
-    if (a.kind === "title") {
-      const sec = project.sections.find((s) => s.id === a.sectionId);
-      if (!sec) continue;
-      issues.push({
-        sectionId: sec.id,
-        index: sec.index,
-        title: sec.title,
-        reason: "title-card rendering arrives in the next render-pipeline pass",
+            : "title text is empty",
       });
     }
   }
@@ -209,6 +256,39 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
         "-i", inName,
         "-vf",
         `scale=${Math.round(w * 1.2)}:${Math.round(h * 1.2)}:force_original_aspect_ratio=increase,crop=${Math.round(w * 1.2)}:${Math.round(h * 1.2)},zoompan=z='min(zoom+0.0008,1.18)':d=${totalFrames}:s=${w}x${h}:fps=30,setsar=1`,
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-r", "30",
+        "-an",
+        "-bsf:v", "h264_mp4toannexb",
+        "-f", "mpegts",
+        outName,
+      ]);
+      segNames.push(outName);
+      continue;
+    }
+
+    if (a.kind === "title") {
+      const activeVersion = section.versions.find((v) => v.id === section.active_version_id);
+      const text = activeVersion && activeVersion.kind === "title" ? activeVersion.text : "";
+      const ts = project.title_settings;
+      const png = renderTitleCardPng({
+        text,
+        w,
+        h,
+        font: ts?.font ?? "JetBrains Mono",
+        color: ts?.color ?? "#f4f1ea",
+        bg: ts?.background_color ?? "#0a0908",
+      });
+      const inName = `title_${i}.png`;
+      await ffmpeg.writeFile(inName, png);
+      const outName = nameFor(section, "ts");
+      await ffmpeg.exec([
+        "-loop", "1",
+        "-t", a.duration_s.toFixed(2),
+        "-i", inName,
+        "-vf",
+        `scale=${w}:${h}:flags=lanczos,fade=t=in:st=0:d=0.3,fade=t=out:st=${Math.max(0, a.duration_s - 0.3).toFixed(2)}:d=0.3,setsar=1`,
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
         "-r", "30",
