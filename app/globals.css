@@ -406,6 +406,31 @@ button {
   padding: 28px 0 20px;
   border-top: 1px solid var(--color-line);
   border-bottom: 1px solid var(--color-line);
+  position: relative;
+}
+.ruler.clickable { cursor: pointer; }
+.ruler.clickable:hover { background: rgba(255, 77, 126, 0.03); }
+.timeline-playhead {
+  position: absolute;
+  top: 50px;
+  bottom: 18px;
+  width: 2px;
+  background: var(--color-blood);
+  box-shadow: 0 0 8px var(--color-blood);
+  pointer-events: none;
+  z-index: 5;
+  transform: translateX(-1px);
+}
+.timeline-playhead::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: -5px;
+  width: 12px;
+  height: 12px;
+  background: var(--color-blood);
+  transform: rotate(45deg);
+  box-shadow: 0 0 8px var(--color-blood);
 }
 .tl-label {
   font-size: 10px;

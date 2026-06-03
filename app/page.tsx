@@ -457,11 +457,16 @@ export default function HomePage() {
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [playPosition, setPlayPosition] = useState<number | null>(null);
+  const [playheadSeconds, setPlayheadSeconds] = useState<number>(0);
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playRAFRef = useRef<number | null>(null);
+  const playStartedAtRef = useRef<number>(0);
 
   const stopPreview = useCallback(() => {
     if (playTimerRef.current) clearTimeout(playTimerRef.current);
+    if (playRAFRef.current !== null) cancelAnimationFrame(playRAFRef.current);
     playTimerRef.current = null;
+    playRAFRef.current = null;
     setPlayPosition(null);
   }, []);
 
@@ -558,11 +563,15 @@ export default function HomePage() {
 
   useEffect(() => () => {
     if (playTimerRef.current) clearTimeout(playTimerRef.current);
+    if (playRAFRef.current !== null) cancelAnimationFrame(playRAFRef.current);
   }, []);
 
   const startPreview = useCallback(() => {
     if (project.sections.length === 0) return;
     if (playTimerRef.current) clearTimeout(playTimerRef.current);
+    if (playRAFRef.current !== null) cancelAnimationFrame(playRAFRef.current);
+    playStartedAtRef.current = performance.now();
+    setPlayheadSeconds(0);
     setPlayPosition(0);
     const advance = (i: number) => {
       const section = project.sections[i];
@@ -584,6 +593,18 @@ export default function HomePage() {
       }, ms);
     };
     advance(0);
+    const total = project.sections.reduce((a, s) => a + s.duration_s, 0);
+    const tick = () => {
+      const elapsed = (performance.now() - playStartedAtRef.current) / 1000;
+      if (elapsed >= total) {
+        setPlayheadSeconds(0);
+        playRAFRef.current = null;
+        return;
+      }
+      setPlayheadSeconds(elapsed);
+      playRAFRef.current = requestAnimationFrame(tick);
+    };
+    playRAFRef.current = requestAnimationFrame(tick);
   }, [project.sections]);
 
   const togglePreview = playPosition !== null ? stopPreview : startPreview;
@@ -1136,12 +1157,33 @@ export default function HomePage() {
       <div className="timeline-wrap">
         <div className="tl-label">
           <span>// TIMELINE</span>
-          <span>Click a clip to open the flow · Click ◇ to set transitions</span>
+          <span>
+            Click a clip · ◇ for transitions · Space play · click ruler to seek
+          </span>
         </div>
+        {playPosition !== null ? (
+          <div
+            className="timeline-playhead"
+            style={{ left: `${Math.min(100, (playheadSeconds / Math.max(0.01, project.duration_s)) * 100)}%` }}
+          />
+        ) : null}
 
         <div
-          className="ruler"
+          className="ruler clickable"
           style={{ gridTemplateColumns: `repeat(${totalCols}, 1fr)` }}
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            const at = pct * project.duration_s;
+            let acc = 0;
+            for (let i = 0; i < project.sections.length; i++) {
+              acc += project.sections[i].duration_s;
+              if (at <= acc) {
+                setActiveSection(project.sections[i].id);
+                break;
+              }
+            }
+          }}
         >
           {Array.from({ length: clipsCount }, (_, i) => (
             <span key={i}>
