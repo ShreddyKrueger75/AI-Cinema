@@ -48,6 +48,7 @@ import {
   runReplicateMotion,
 } from "@/lib/replicate";
 import { runElevenLabsMusic, runElevenLabsTTS, voiceList } from "@/lib/elevenlabs";
+import { describeRenderPlan, renderProject, type RenderProgress } from "@/lib/render";
 
 const ASPECT_OPTIONS: Aspect[] = ["9:16", "16:9", "1:1"];
 
@@ -2717,6 +2718,60 @@ function RenderDialog({ project, onClose }: { project: Project; onClose: () => v
     return m;
   }, [transitions]);
 
+  const renderPlan = useMemo(() => describeRenderPlan(project), [project]);
+  const [renderProgress, setRenderProgress] = useState<RenderProgress | null>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
+  const [renderUrl, setRenderUrl] = useState<string | null>(null);
+  const [renderSize, setRenderSize] = useState<number>(0);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => {
+    if (renderUrl) URL.revokeObjectURL(renderUrl);
+  }, [renderUrl]);
+
+  const handleRender = async () => {
+    if (renderProgress) return;
+    setRenderError(null);
+    if (renderUrl) URL.revokeObjectURL(renderUrl);
+    setRenderUrl(null);
+    setRenderSize(0);
+    abortRef.current = new AbortController();
+    setRenderProgress({ phase: "loading-engine", pct: 0, message: "Starting…" });
+    try {
+      const result = await renderProject({
+        project,
+        onProgress: setRenderProgress,
+        signal: abortRef.current.signal,
+      });
+      setRenderUrl(result.url);
+      setRenderSize(result.sizeBytes);
+      setRenderProgress({ phase: "done", pct: 100, message: "Render complete." });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setRenderError(message);
+      setRenderProgress(null);
+    }
+  };
+
+  const handleCancelRender = () => {
+    abortRef.current?.abort();
+    setRenderProgress(null);
+  };
+
+  const handleDownload = () => {
+    if (!renderUrl) return;
+    const a = document.createElement("a");
+    const safe = project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "render";
+    a.href = renderUrl;
+    a.download = `${safe}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const planReady = renderPlan.ready && renderPlan.assets.length > 0;
+  const isRunning = renderProgress !== null && renderProgress.phase !== "done";
+
   let stillCostTotal = 0;
   let motionCostTotal = 0;
   for (const s of sections) {
@@ -2762,7 +2817,6 @@ function RenderDialog({ project, onClose }: { project: Project; onClose: () => v
     }
     return { id: s.id, label: s.title, ready: true, reason: "ready" };
   });
-  const allReady = readiness.every((r) => r.ready);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -2855,18 +2909,73 @@ function RenderDialog({ project, onClose }: { project: Project; onClose: () => v
           </div>
         </div>
 
+        {renderProgress || renderError || renderUrl ? (
+          <div className="modal-section render-status-section">
+            <div className="modal-section-title">// RENDER</div>
+            {renderError ? (
+              <div className="render-error">
+                <strong>Render failed.</strong>
+                <span>{renderError}</span>
+              </div>
+            ) : null}
+            {renderProgress && !renderError ? (
+              <>
+                <div className="render-bar">
+                  <div className="render-bar-fill" style={{ width: `${renderProgress.pct}%` }} />
+                </div>
+                <div className="render-progress-row">
+                  <span>{renderProgress.phase.replace(/-/g, " ")}</span>
+                  <span>{renderProgress.message}</span>
+                  <span>{renderProgress.pct}%</span>
+                </div>
+              </>
+            ) : null}
+            {renderUrl ? (
+              <div className="render-output">
+                <video src={renderUrl} controls className="render-video" />
+                <div className="render-meta">
+                  <span>{(renderSize / (1024 * 1024)).toFixed(2)} MB</span>
+                  <button type="button" className="btn primary" onClick={handleDownload}>
+                    ⤓ Download MP4
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="modal-foot">
-          <span className={`render-status ${allReady ? "ok" : "miss"}`}>
-            {allReady
-              ? "All sections ready"
-              : `${readiness.filter((r) => !r.ready).length} section${
-                  readiness.filter((r) => !r.ready).length === 1 ? "" : "s"
-                } not ready`}
+          <span className={`render-status ${planReady ? "ok" : "miss"}`}>
+            {planReady
+              ? `Plan ready · ${renderPlan.assets.length} segment${renderPlan.assets.length === 1 ? "" : "s"} · ${renderPlan.totalDuration.toFixed(1)}s`
+              : renderPlan.issues.length > 0
+                ? `${renderPlan.issues.length} section${renderPlan.issues.length === 1 ? "" : "s"} not renderable yet`
+                : "No assets to render"}
           </span>
           <div style={{ display: "flex", gap: 10 }}>
-            <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-            <button type="button" className="btn primary" disabled title="Render pipeline ships next">
-              ▶︎ Render (ffmpeg.wasm pending)
+            {isRunning ? (
+              <button type="button" className="btn ghost" onClick={handleCancelRender}>
+                ■ Cancel render
+              </button>
+            ) : (
+              <button type="button" className="btn ghost" onClick={onClose}>Close</button>
+            )}
+            <button
+              type="button"
+              className="btn primary"
+              disabled={!planReady || isRunning}
+              onClick={handleRender}
+              title={
+                planReady
+                  ? "Concatenate active assets with ffmpeg.wasm and produce an MP4"
+                  : renderPlan.issues.map((i) => `${i.title}: ${i.reason}`).join(" · ")
+              }
+            >
+              {isRunning
+                ? "● Rendering…"
+                : renderUrl
+                  ? "↻ Re-render"
+                  : "▶︎ Render MP4"}
             </button>
           </div>
         </div>
