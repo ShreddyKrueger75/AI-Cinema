@@ -41,6 +41,7 @@ import { useLibrary, type LibraryItem, type LibraryKind } from "@/lib/library";
 import { TEMPLATES } from "@/lib/templates";
 import { useProjectLibrary } from "@/lib/projects";
 import { useHistory } from "@/lib/history";
+import { toast, useToasts } from "@/lib/toast";
 import { useGenState, stillJobKey, motionJobKey, type GenSlot } from "@/lib/genstate";
 import {
   composePromptWithBrief,
@@ -391,7 +392,7 @@ export default function HomePage() {
   const handleGenerateMusic = useCallback(async () => {
     const music = project.music_track;
     if (!music || !music.prompt.trim()) {
-      alert("Add a music prompt first.");
+      toast.warn("Add a music prompt first.");
       return;
     }
     setMusicJob({ status: "running" });
@@ -452,7 +453,7 @@ export default function HomePage() {
         return;
       }
       if (!seg.text.trim()) {
-        alert("Add text to the VO segment first.");
+        toast.warn("Add text to the VO segment first.");
         return;
       }
       setVoJobs((j) => ({ ...j, [segmentId]: { status: "running" } }));
@@ -511,11 +512,15 @@ export default function HomePage() {
     playPosition !== null ? project.sections[playPosition]?.id ?? null : null;
 
   const handleReset = useCallback(() => {
-    if (confirm("Reset project to defaults? Unsaved work will be lost.")) resetProject();
+    if (confirm("Reset project to defaults? Unsaved work will be lost.")) {
+      resetProject();
+      toast.info("Project reset", "Back to the Product Reveal seed.");
+    }
   }, [resetProject]);
   const handleExportLUT = useCallback(() => {
     if (!project.grade) return;
     downloadCubeLUT(project.grade);
+    toast.success(".cube LUT exported", `${project.grade.name} · 17³ entries`);
   }, [project.grade]);
 
   const transitionsByTo = useMemo(() => {
@@ -531,7 +536,7 @@ export default function HomePage() {
   const handleImport = async () => {
     const result = await pickProjectJSONFile();
     if (result.ok) setProject(result.project);
-    else alert(result.error);
+    else toast.error("Import failed", result.error);
   };
 
   return (
@@ -1255,7 +1260,38 @@ export default function HomePage() {
         <span>// AI CINEMA · BUILT FOR THE LOVE OF THE GAME · MIT</span>
         <span>BLOODY FINGER SOFTWARE — 2026</span>
       </div>
+
+      <ToastViewport />
     </>
+  );
+}
+
+/* ───────────── TOAST VIEWPORT ───────────── */
+
+function ToastViewport() {
+  const toasts = useToasts((s) => s.toasts);
+  const dismiss = useToasts((s) => s.dismiss);
+  if (toasts.length === 0) return null;
+  return (
+    <div className="toast-viewport" role="region" aria-live="polite">
+      {toasts.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          className={`toast toast-${t.kind}`}
+          onClick={() => dismiss(t.id)}
+          title="Dismiss"
+        >
+          <span className="toast-icon">
+            {t.kind === "error" ? "✕" : t.kind === "warn" ? "⚠" : t.kind === "success" ? "✓" : "ⓘ"}
+          </span>
+          <span className="toast-body">
+            <span className="toast-msg">{t.message}</span>
+            {t.detail ? <span className="toast-detail">{t.detail}</span> : null}
+          </span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -2170,8 +2206,9 @@ function FlowPanel({
       return;
     }
 
-    alert(
-      `Live ${modelId} generation isn't wired yet. Switch to "Pollinations (free)" or Flux / Schnell / SDXL / Ideogram (Replicate) to generate.`,
+    toast.info(
+      `Live ${modelId} isn't wired yet`,
+      "Switch to Pollinations (free) or Flux / Schnell / SDXL / Ideogram (Replicate).",
     );
   };
 
@@ -2218,8 +2255,9 @@ function FlowPanel({
     if (pid === "replicate" && isReplicateMotionModel(modelId)) {
       const stillToUse = referencedStill;
       if (!stillToUse?.output_url) {
-        alert(
-          "Motion needs a generated still as the first frame. Generate the still first.",
+        toast.warn(
+          "Generate a still first",
+          "Motion uses the active still as its first frame.",
         );
         return;
       }
@@ -2250,8 +2288,9 @@ function FlowPanel({
       return;
     }
 
-    alert(
-      `Live ${modelId} generation isn't wired yet. Switch to "Ken Burns (free)" or "MiniMax Video-01" (Replicate) to generate.`,
+    toast.info(
+      `Live ${modelId} isn't wired yet`,
+      "Switch to Ken Burns (free) or MiniMax Video-01 (Replicate).",
     );
   };
 
