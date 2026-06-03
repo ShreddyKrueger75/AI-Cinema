@@ -395,8 +395,12 @@ export default function HomePage() {
     setProject(next);
   }, [project, setProject]);
 
-  const projectStubs = useProjectLibrary((s) => s.order.map((id) => s.projects[id]).filter(Boolean));
+  const projectOrder = useProjectLibrary((s) => s.order);
   const savedProjectsMap = useProjectLibrary((s) => s.projects);
+  const projectStubs = useMemo(
+    () => projectOrder.map((id) => savedProjectsMap[id]).filter(Boolean),
+    [projectOrder, savedProjectsMap],
+  );
   const savedSnapshot = savedProjectsMap[project.id];
   const isDirty = !savedSnapshot || savedSnapshot.updated_at !== project.updated_at;
   const isInLibrary = !!savedSnapshot;
