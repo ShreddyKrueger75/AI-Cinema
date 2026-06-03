@@ -88,17 +88,24 @@ function Popover({
   children,
   className = "",
   style,
+  align = "left",
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
   className?: string;
   style?: CSSProperties;
+  align?: "left" | "right" | "center";
 }) {
   const ref = useClickOutside<HTMLDivElement>(onClose);
   if (!open) return null;
   return (
-    <div ref={ref} className={`popover ${className}`} style={style} role="dialog">
+    <div
+      ref={ref}
+      className={`popover align-${align} ${className}`}
+      style={style}
+      role="dialog"
+    >
       {children}
     </div>
   );
@@ -221,6 +228,7 @@ export default function HomePage() {
   const addTitleSection = useStore((s) => s.addTitleSection);
   const removeSection = useStore((s) => s.removeSection);
   const moveSection = useStore((s) => s.moveSection);
+  const duplicateSection = useStore((s) => s.duplicateSection);
   const resetProject = useStore((s) => s.resetProject);
   const updateTransition = useStore((s) => s.updateTransition);
   const addVOSegment = useStore((s) => s.addVOSegment);
@@ -259,6 +267,7 @@ export default function HomePage() {
 
   const [aspectMenuOpen, setAspectMenuOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [insertAfterId, setInsertAfterId] = useState<string | null>(null);
   const [editingTransitionId, setEditingTransitionId] = useState<string | null>(null);
   const [editingVOId, setEditingVOId] = useState<string | null>(null);
   const [lookOpen, setLookOpen] = useState<null | "brief" | "grade" | "music" | "title">(null);
@@ -443,6 +452,7 @@ export default function HomePage() {
           value={project.title_settings?.name}
           open={lookOpen === "title"}
           onToggle={() => setLookOpen(lookOpen === "title" ? null : "title")}
+          alignRight
         >
           <TitleStyleEditor
             style={project.title_settings}
@@ -537,6 +547,45 @@ export default function HomePage() {
                   <span className="clip-version">{versionLabel}</span>
                   <span className="clip-dur">{section.duration_s.toFixed(1)}s</span>
                 </div>
+                <span className="popover-anchor clip-insert">
+                  <button
+                    type="button"
+                    className="clip-insert-btn"
+                    title="Insert section after"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setInsertAfterId(insertAfterId === section.id ? null : section.id);
+                    }}
+                  >
+                    +
+                  </button>
+                  <Popover
+                    open={insertAfterId === section.id}
+                    onClose={() => setInsertAfterId(null)}
+                    className="menu"
+                  >
+                    <button
+                      type="button"
+                      className="menu-item"
+                      onClick={() => {
+                        addClipSection(section.id);
+                        setInsertAfterId(null);
+                      }}
+                    >
+                      Clip
+                    </button>
+                    <button
+                      type="button"
+                      className="menu-item"
+                      onClick={() => {
+                        addTitleSection(section.id);
+                        setInsertAfterId(null);
+                      }}
+                    >
+                      Title card
+                    </button>
+                  </Popover>
+                </span>
                 <div className="clip-actions">
                   <button
                     type="button"
@@ -561,6 +610,17 @@ export default function HomePage() {
                     }}
                   >
                     →
+                  </button>
+                  <button
+                    type="button"
+                    className="clip-act"
+                    title="Duplicate section"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      duplicateSection(section.id);
+                    }}
+                  >
+                    ⎘
                   </button>
                   <button
                     type="button"
@@ -747,12 +807,14 @@ function LookSlot({
   value,
   open,
   onToggle,
+  alignRight = false,
   children,
 }: {
   label: string;
   value?: string;
   open: boolean;
   onToggle: () => void;
+  alignRight?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -763,7 +825,12 @@ function LookSlot({
           {value ?? "—"} <span className="caret">▾</span>
         </span>
       </button>
-      <Popover open={open} onClose={onToggle} className="look-popover">
+      <Popover
+        open={open}
+        onClose={onToggle}
+        className="look-popover"
+        align={alignRight ? "right" : "left"}
+      >
         {children}
       </Popover>
     </div>

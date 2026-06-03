@@ -576,6 +576,8 @@ textarea.inline-edit { resize: vertical; min-height: 60px; width: 100%; padding:
   min-width: 200px;
   padding: 6px;
 }
+.popover.align-right { left: auto; right: 0; }
+.popover.align-center { left: 50%; transform: translateX(-50%); }
 .popover.menu { padding: 4px; min-width: 140px; }
 .popover.menu.wide { min-width: 220px; }
 .popover.look-popover { min-width: 360px; padding: 16px; left: 0; }
@@ -753,6 +755,31 @@ textarea.inline-edit { resize: vertical; min-height: 60px; width: 100%; padding:
 .clip-act:hover:not(:disabled) { color: var(--color-blood); border-color: var(--color-blood-faint); }
 .clip-act:disabled { opacity: 0.3; cursor: not-allowed; }
 .clip-act.remove:hover { color: var(--color-blood); border-color: var(--color-blood); }
+
+.clip-insert {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translate(50%, -50%);
+  z-index: 3;
+}
+.clip-insert-btn {
+  width: 20px;
+  height: 20px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-line-strong);
+  color: var(--color-fg-faint);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity .15s, color .15s, border-color .15s;
+}
+.clip:hover .clip-insert-btn,
+.clip-insert-btn:hover { opacity: 1; }
+.clip-insert-btn:hover { color: var(--color-blood); border-color: var(--color-blood); }
 
 /* ───────────── VO segments ───────────── */
 .vo-seg {

@@ -36,6 +36,7 @@ export type StoreState = {
   addTitleSection: (afterSectionId?: string | null) => void;
   removeSection: (sectionId: string) => void;
   moveSection: (sectionId: string, direction: -1 | 1) => void;
+  duplicateSection: (sectionId: string) => void;
 
   updateStill: (sectionId: string, stillId: string, patch: Partial<Omit<Still, "id">>) => void;
   addStill: (sectionId: string) => void;
@@ -273,6 +274,46 @@ export const useStore = create<StoreState>()(
           let next = reindexAndRetotal({ ...state.project, sections });
           next = reconcileTransitions(next);
           return { project: touch(next) };
+        }),
+
+      duplicateSection: (sectionId) =>
+        set((state) => {
+          const sections = [...state.project.sections];
+          const i = sections.findIndex((s) => s.id === sectionId);
+          if (i < 0) return state;
+          const src = sections[i];
+          const stillIdMap = new Map<string, string>();
+          const newStills: Still[] = src.stills.map((st) => {
+            const newId_ = newId("still");
+            stillIdMap.set(st.id, newId_);
+            return { ...st, id: newId_ };
+          });
+          const newVersions = src.versions.map((v) => {
+            if (v.kind === "clip") {
+              const remapped = v.still_ref ? stillIdMap.get(v.still_ref) ?? null : null;
+              return { ...v, id: newId("ver"), still_ref: remapped };
+            }
+            return { ...v, id: newId("ver") };
+          });
+          const activeVersionId =
+            newVersions[src.versions.findIndex((v) => v.id === src.active_version_id)]?.id ??
+            newVersions[0]?.id ??
+            null;
+          const activeStillId = src.active_still_id ? stillIdMap.get(src.active_still_id) ?? null : null;
+          const copy: Section = {
+            ...src,
+            id: newId("section"),
+            index: 0,
+            title: `${src.title} (copy)`,
+            stills: newStills,
+            versions: newVersions,
+            active_version_id: activeVersionId,
+            active_still_id: activeStillId,
+          };
+          sections.splice(i + 1, 0, copy);
+          let next = reindexAndRetotal({ ...state.project, sections });
+          next = reconcileTransitions(next);
+          return { project: touch(next), activeSectionId: copy.id };
         }),
 
       updateStill: (sectionId, stillId, patch) =>
