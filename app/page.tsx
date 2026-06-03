@@ -2,15 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { selectActiveSection, useStore } from "@/lib/store";
-import type { Section } from "@/lib/types";
+import type { Project, Section } from "@/lib/types";
 import { downloadProjectJSON, pickProjectJSONFile } from "@/lib/serialize";
 import {
   DURATION_OPTIONS_S,
   IMAGE_MODELS,
   MOTION_MODELS,
   imageModelCost,
+  isImageModelFree,
+  isMotionModelFree,
   motionModelCost,
 } from "@/lib/models";
+import { kenBurnsFromPrompt, newSeed, pollinationsUrl } from "@/lib/generate";
 
 function formatTimecode(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -69,8 +72,8 @@ export default function HomePage() {
       <div className="statusbar">
         <div className="left">
           <span><span className="dot" />SYSTEM // ONLINE</span>
-          <span>BUILD 0.0.1 — MOCKUP</span>
-          <span>BYOM — KEYS LOCAL</span>
+          <span>BUILD 0.0.1</span>
+          <span>FREE PREVIEW · NO KEY NEEDED</span>
         </div>
         <div className="right">
           <span>{hydrated ? "STATE // PERSISTED" : "STATE // EPHEMERAL"}</span>
@@ -210,7 +213,7 @@ export default function HomePage() {
   );
 }
 
-function FlowPanel({ section, project }: { section: Section; project: { sections: Section[] } }) {
+function FlowPanel({ section, project }: { section: Section; project: Project }) {
   const setActiveSection = useStore((s) => s.setActiveSection);
   const setActiveVersion = useStore((s) => s.setActiveVersion);
   const setActiveStill = useStore((s) => s.setActiveStill);
@@ -228,6 +231,60 @@ function FlowPanel({ section, project }: { section: Section; project: { sections
   const priorClipSections = project.sections.filter(
     (s) => s.type === "clip" && s.index < section.index,
   );
+
+  const referencedStill =
+    activeVersion && activeVersion.kind === "clip" && activeVersion.still_ref
+      ? section.stills.find((s) => s.id === activeVersion.still_ref) ?? activeStill
+      : activeStill;
+
+  const handleGenerateStill = () => {
+    if (!activeStill) return;
+    if (!isImageModelFree(activeStill.model)) {
+      alert(
+        `${activeStill.model} needs an API key. Switch to "Pollinations (free)" to generate without one.`,
+      );
+      return;
+    }
+    const url = pollinationsUrl(
+      activeStill.image_prompt,
+      project.aspect,
+      newSeed(),
+      project.brief?.visual,
+    );
+    updateStill(section.id, activeStill.id, { output_url: url });
+  };
+
+  const handleGenerateMotion = () => {
+    if (!activeVersion || activeVersion.kind !== "clip") return;
+    if (!isMotionModelFree(activeVersion.motion.model)) {
+      alert(
+        `${activeVersion.motion.model} needs an API key. Switch to "Ken Burns (free)" to preview motion without one.`,
+      );
+      return;
+    }
+    const stillToUse = referencedStill;
+    if (stillToUse && !stillToUse.output_url && isImageModelFree(stillToUse.model)) {
+      const url = pollinationsUrl(
+        stillToUse.image_prompt,
+        project.aspect,
+        newSeed(),
+        project.brief?.visual,
+      );
+      updateStill(section.id, stillToUse.id, { output_url: url });
+    }
+    const direction = kenBurnsFromPrompt(activeVersion.motion.prompt);
+    updateClipVersion(section.id, activeVersion.id, {
+      output_url: `kenburns:${direction}`,
+      still_ref: activeVersion.still_ref ?? activeStill?.id ?? null,
+    });
+  };
+
+  const motionDirection =
+    activeVersion && activeVersion.kind === "clip" && activeVersion.output_url?.startsWith("kenburns:")
+      ? (activeVersion.output_url.slice("kenburns:".length) as "in" | "out" | "left" | "right")
+      : null;
+
+  const motionStillUrl = motionDirection && referencedStill?.output_url ? referencedStill.output_url : null;
 
   if (section.type === "title") {
     return (
@@ -338,7 +395,15 @@ function FlowPanel({ section, project }: { section: Section; project: { sections
           </div>
 
           <div className="preview-row">
-            <div className="preview-box">
+            <div className={`preview-box${activeStill?.output_url ? " has-image" : ""}`}>
+              {activeStill?.output_url ? (
+                <img
+                  key={activeStill.output_url}
+                  src={activeStill.output_url}
+                  alt={activeStill.label}
+                  className="preview-img"
+                />
+              ) : null}
               {activeStill ? (
                 <span className="vbadge">s{section.stills.findIndex((s) => s.id === activeStill.id) + 1} · active</span>
               ) : null}
@@ -384,7 +449,9 @@ function FlowPanel({ section, project }: { section: Section; project: { sections
 
           <div className="gen-row">
             <span className="gen-cost">{formatCost(stillCost)} per still</span>
-            <button type="button" className="btn primary" disabled={!activeStill}>⏵ Generate still</button>
+            <button type="button" className="btn primary" disabled={!activeStill} onClick={handleGenerateStill}>
+              ⏵ Generate still
+            </button>
           </div>
         </div>
 
@@ -456,7 +523,20 @@ function FlowPanel({ section, project }: { section: Section; project: { sections
           </div>
 
           <div className="preview-row">
-            <div className="preview-box motion">
+            <div className={`preview-box motion${motionStillUrl ? " has-image" : ""}`}>
+              {motionStillUrl ? (
+                <img
+                  key={`${motionStillUrl}|${motionDirection}|${activeVersion && activeVersion.kind === "clip" ? activeVersion.motion.duration_s : 0}`}
+                  src={motionStillUrl}
+                  alt="motion preview"
+                  className={`preview-img kb kb-${motionDirection}`}
+                  style={{
+                    animationDuration: `${
+                      activeVersion && activeVersion.kind === "clip" ? activeVersion.motion.duration_s : 3
+                    }s`,
+                  }}
+                />
+              ) : null}
               {activeVersion ? (
                 <span className="vbadge">v{section.versions.findIndex((v) => v.id === activeVersion.id) + 1} · active</span>
               ) : null}
@@ -502,8 +582,13 @@ function FlowPanel({ section, project }: { section: Section; project: { sections
 
           <div className="gen-row">
             <span className="gen-cost">{formatCost(motionCost)} per version</span>
-            <button type="button" className="btn primary" disabled={!activeVersion}>
-              ⏵ Generate v{section.versions.length + 1}
+            <button
+              type="button"
+              className="btn primary"
+              disabled={!activeVersion}
+              onClick={handleGenerateMotion}
+            >
+              ⏵ Generate motion
             </button>
           </div>
         </div>

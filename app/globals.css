@@ -425,8 +425,50 @@ textarea.field-input:focus,
   position: absolute;
   inset: 0;
   background: radial-gradient(circle at 30% 30%, rgba(230, 145, 80, 0.18), transparent 60%);
+  pointer-events: none;
 }
+.preview-box.has-image { background: #000; }
+.preview-box.has-image::after { display: none; }
 .preview-box.motion { background: linear-gradient(155deg, #281a14, #3a2418 30%, #2a1810 70%, #150d08); }
+.preview-box.motion.has-image { background: #000; }
+
+.preview-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.preview-img.kb {
+  transform-origin: 50% 50%;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+  will-change: transform;
+}
+.preview-img.kb-in    { animation-name: kb-in; }
+.preview-img.kb-out   { animation-name: kb-out; transform-origin: 50% 50%; }
+.preview-img.kb-left  { animation-name: kb-left;  transform-origin: 70% 50%; }
+.preview-img.kb-right { animation-name: kb-right; transform-origin: 30% 50%; }
+
+@keyframes kb-in {
+  from { transform: scale(1.00); }
+  to   { transform: scale(1.18); }
+}
+@keyframes kb-out {
+  from { transform: scale(1.18); }
+  to   { transform: scale(1.00); }
+}
+@keyframes kb-left {
+  from { transform: scale(1.18) translateX(0%); }
+  to   { transform: scale(1.18) translateX(-6%); }
+}
+@keyframes kb-right {
+  from { transform: scale(1.18) translateX(0%); }
+  to   { transform: scale(1.18) translateX(6%); }
+}
 .preview-box .play { position: absolute; bottom: 12px; left: 12px; font-size: 18px; color: var(--color-fg); z-index: 1; }
 .preview-box .time {
   position: absolute;

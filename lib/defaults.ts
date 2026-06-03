@@ -53,14 +53,14 @@ function buildSection03Detail(): Section {
       id: "still_03_s1",
       label: "cool tone, tight crop",
       image_prompt: "macro detail, cool tone, tight crop",
-      model: "flux-1.1-pro",
+      model: "pollinations",
       input_ref: null,
     },
     {
       id: "still_03_s2",
       label: "warm side light",
       image_prompt: "macro detail, raw stitching, warm side light, shallow focus",
-      model: "flux-1.1-pro",
+      model: "pollinations",
       input_ref: "section:section_02:last_frame",
     },
   ];
@@ -71,7 +71,7 @@ function buildSection03Detail(): Section {
       kind: "clip",
       label: "static — no motion",
       still_ref: "still_03_s2",
-      motion: { prompt: "static, no motion", model: "runway-gen4", duration_s: CLIP_DURATION_S },
+      motion: { prompt: "static, no motion", model: "ken-burns", duration_s: CLIP_DURATION_S },
     },
     {
       id: "ver_03_v2",
@@ -80,7 +80,7 @@ function buildSection03Detail(): Section {
       still_ref: "still_03_s2",
       motion: {
         prompt: "fast orbit left to right, whip pan",
-        model: "runway-gen4",
+        model: "ken-burns",
         duration_s: CLIP_DURATION_S,
       },
     },
@@ -91,7 +91,7 @@ function buildSection03Detail(): Section {
       still_ref: "still_03_s2",
       motion: {
         prompt: "slow orbit left to right, breathing focus pull, no whip",
-        model: "runway-gen4",
+        model: "ken-burns",
         duration_s: CLIP_DURATION_S,
       },
     },
@@ -124,7 +124,7 @@ function buildSimpleClipSection(args: {
           kind: "clip",
           label: active_version_label,
           still_ref: null,
-          motion: { prompt: "", model: "runway-gen4", duration_s: CLIP_DURATION_S },
+          motion: { prompt: "", model: "ken-burns", duration_s: CLIP_DURATION_S },
         },
       ]
     : [];

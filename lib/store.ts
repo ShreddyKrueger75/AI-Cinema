@@ -19,7 +19,12 @@ export type StoreState = {
   updateClipVersion: (
     sectionId: string,
     versionId: string,
-    patch: { label?: string; motion?: Partial<ClipVersion["motion"]>; still_ref?: string | null },
+    patch: {
+      label?: string;
+      motion?: Partial<ClipVersion["motion"]>;
+      still_ref?: string | null;
+      output_url?: string;
+    },
   ) => void;
   addClipVersion: (sectionId: string) => void;
   removeClipVersion: (sectionId: string, versionId: string) => void;
@@ -82,7 +87,7 @@ export const useStore = create<StoreState>()(
             id: newId("still"),
             label: "new still",
             image_prompt: "",
-            model: seed?.model ?? "flux-1.1-pro",
+            model: seed?.model ?? "pollinations",
             input_ref: null,
           };
           return {
@@ -120,6 +125,7 @@ export const useStore = create<StoreState>()(
                 ...v,
                 ...(patch.label !== undefined ? { label: patch.label } : {}),
                 ...(patch.still_ref !== undefined ? { still_ref: patch.still_ref } : {}),
+                ...(patch.output_url !== undefined ? { output_url: patch.output_url } : {}),
                 ...(patch.motion ? { motion: { ...v.motion, ...patch.motion } } : {}),
               };
             }),
@@ -139,7 +145,7 @@ export const useStore = create<StoreState>()(
             still_ref: section.active_still_id,
             motion: {
               prompt: seedMotion?.prompt ?? "",
-              model: seedMotion?.model ?? "runway-gen4",
+              model: seedMotion?.model ?? "ken-burns",
               duration_s: seedMotion?.duration_s ?? section.duration_s,
             },
           };
@@ -169,7 +175,7 @@ export const useStore = create<StoreState>()(
       name: STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
-      version: 1,
+      version: 2,
     },
   ),
 );
