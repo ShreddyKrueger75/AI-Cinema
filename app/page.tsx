@@ -336,28 +336,6 @@ export default function HomePage() {
     setProject(next);
   }, [project, setProject]);
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName?.toLowerCase();
-      const editable =
-        tag === "input" || tag === "textarea" || target?.isContentEditable;
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && (e.key === "z" || e.key === "Z")) {
-        if (editable) return;
-        e.preventDefault();
-        if (e.shiftKey) handleRedo();
-        else handleUndo();
-      } else if (mod && (e.key === "y" || e.key === "Y")) {
-        if (editable) return;
-        e.preventDefault();
-        handleRedo();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [handleUndo, handleRedo]);
-
   const projectStubs = useProjectLibrary((s) => s.order.map((id) => s.projects[id]).filter(Boolean));
   const saveProjectToLibrary = useProjectLibrary((s) => s.saveProject);
   const loadProjectFromLibrary = useProjectLibrary((s) => s.loadProject);
@@ -380,6 +358,7 @@ export default function HomePage() {
   const [providersOpen, setProvidersOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [playPosition, setPlayPosition] = useState<number | null>(null);
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -513,6 +492,99 @@ export default function HomePage() {
   const togglePreview = playPosition !== null ? stopPreview : startPreview;
   const previewSectionId =
     playPosition !== null ? project.sections[playPosition]?.id ?? null : null;
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const editable =
+        tag === "input" || tag === "textarea" || target?.isContentEditable;
+      const mod = e.metaKey || e.ctrlKey;
+
+      if (mod && (e.key === "z" || e.key === "Z")) {
+        if (editable) return;
+        e.preventDefault();
+        if (e.shiftKey) handleRedo();
+        else handleUndo();
+        return;
+      }
+      if (mod && (e.key === "y" || e.key === "Y")) {
+        if (editable) return;
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+      if (editable) return;
+
+      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
+        e.preventDefault();
+        setHelpOpen((o) => !o);
+        return;
+      }
+      if (e.key === "Escape") {
+        if (helpOpen) { setHelpOpen(false); return; }
+        if (renderOpen) { setRenderOpen(false); return; }
+        if (providersOpen) { setProvidersOpen(false); return; }
+        if (lookOpen) { setLookOpen(null); return; }
+        if (activeSectionId) { setActiveSection(null); return; }
+        return;
+      }
+      if (e.key === " " || e.code === "Space") {
+        e.preventDefault();
+        if (playPosition !== null) stopPreview();
+        else startPreview();
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        if (!project.sections.length) return;
+        e.preventDefault();
+        const idx = project.sections.findIndex((s) => s.id === activeSectionId);
+        const nextIdx = idx <= 0 ? project.sections.length - 1 : idx - 1;
+        setActiveSection(project.sections[nextIdx].id);
+        return;
+      }
+      if (e.key === "ArrowRight") {
+        if (!project.sections.length) return;
+        e.preventDefault();
+        const idx = project.sections.findIndex((s) => s.id === activeSectionId);
+        const nextIdx = idx < 0 || idx === project.sections.length - 1 ? 0 : idx + 1;
+        setActiveSection(project.sections[nextIdx].id);
+        return;
+      }
+      if (activeSectionId && (e.key === "Delete" || e.key === "Backspace")) {
+        const sec = project.sections.find((s) => s.id === activeSectionId);
+        if (!sec) return;
+        e.preventDefault();
+        if (confirm(`Delete section "${sec.title}"?`)) {
+          removeSection(activeSectionId);
+          toast.info(`Removed "${sec.title}"`);
+        }
+        return;
+      }
+      if (activeSectionId && (e.key === "d" || e.key === "D")) {
+        e.preventDefault();
+        duplicateSection(activeSectionId);
+        return;
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [
+    handleUndo,
+    handleRedo,
+    helpOpen,
+    renderOpen,
+    providersOpen,
+    lookOpen,
+    activeSectionId,
+    project.sections,
+    setActiveSection,
+    playPosition,
+    startPreview,
+    stopPreview,
+    removeSection,
+    duplicateSection,
+  ]);
 
   const handleReset = useCallback(() => {
     if (confirm("Reset project to defaults? Unsaved work will be lost.")) {
@@ -777,6 +849,14 @@ export default function HomePage() {
             ↷
           </button>
           <button type="button" className="btn ghost" onClick={handleReset} title="Reset to defaults">↺ Reset</button>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => setHelpOpen(true)}
+            title="Keyboard shortcuts (?)"
+          >
+            ?
+          </button>
           <button type="button" className="btn ghost" onClick={handleImport}>Import</button>
           <button type="button" className="btn ghost" onClick={handleExport}>Export</button>
           <button
@@ -1294,6 +1374,8 @@ export default function HomePage() {
           onClose={() => setProvidersOpen(false)}
         />
       ) : null}
+
+      {helpOpen ? <HelpDialog onClose={() => setHelpOpen(false)} /> : null}
 
       <div className="footstrip">
         <span>// AI CINEMA · BUILT FOR THE LOVE OF THE GAME · MIT</span>
@@ -3339,6 +3421,80 @@ function RenderDialog({ project, onClose }: { project: Project; onClose: () => v
                   : "▶︎ Render MP4"}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────── HELP DIALOG ───────────── */
+
+function HelpDialog({ onClose }: { onClose: () => void }) {
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform || "");
+  const mod = isMac ? "⌘" : "Ctrl";
+  const groups: { title: string; items: { keys: string[]; label: string }[] }[] = [
+    {
+      title: "// EDITING",
+      items: [
+        { keys: [`${mod} Z`], label: "Undo" },
+        { keys: [`⇧ ${mod} Z`, `${mod} Y`], label: "Redo" },
+        { keys: ["D"], label: "Duplicate active section" },
+        { keys: ["Del", "⌫"], label: "Remove active section" },
+      ],
+    },
+    {
+      title: "// NAVIGATION",
+      items: [
+        { keys: ["←"], label: "Previous section" },
+        { keys: ["→"], label: "Next section" },
+        { keys: ["Esc"], label: "Close panel / dialog" },
+      ],
+    },
+    {
+      title: "// PLAYBACK",
+      items: [
+        { keys: ["Space"], label: "Preview / stop timeline" },
+      ],
+    },
+    {
+      title: "// HELP",
+      items: [
+        { keys: ["?", "/"], label: "Open this dialog" },
+      ],
+    },
+  ];
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
+        <div className="modal-head">
+          <div>
+            <div className="modal-title">// SHORTCUTS</div>
+            <div className="modal-sub">Keys are ignored while typing in inputs</div>
+          </div>
+          <button type="button" className="btn ghost" onClick={onClose}>✕ Close</button>
+        </div>
+        <div className="modal-body">
+          {groups.map((g) => (
+            <div key={g.title} className="modal-section">
+              <div className="modal-section-title">{g.title}</div>
+              <div className="shortcut-grid">
+                {g.items.map((item) => (
+                  <div key={item.label} className="shortcut-row">
+                    <div className="shortcut-keys">
+                      {item.keys.map((k, i) => (
+                        <span key={i} className="kbd">{k}</span>
+                      ))}
+                    </div>
+                    <div className="shortcut-label">{item.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="modal-foot">
+          <span className="render-status">Bring your own model · cinematic by default</span>
+          <button type="button" className="btn primary" onClick={onClose}>OK</button>
         </div>
       </div>
     </div>
