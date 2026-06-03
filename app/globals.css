@@ -608,6 +608,19 @@ button.clip-version:hover { border-color: var(--color-blood-faint); }
   height: 28px;
   border-top: 1px solid var(--color-line);
 }
+.music-bed-wave {
+  display: block;
+  width: 100%;
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-line);
+  padding: 0 6px;
+}
+
+.waveform { display: block; }
+
+.vo-seg { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; }
+.vo-seg-head { display: block; line-height: 1.3; }
+.vo-seg-wave { width: 100%; }
 
 .grade-strip {
   grid-column: 1 / -1;

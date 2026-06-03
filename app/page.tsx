@@ -42,6 +42,7 @@ import { TEMPLATES } from "@/lib/templates";
 import { useProjectLibrary } from "@/lib/projects";
 import { useHistory } from "@/lib/history";
 import { toast, useToasts } from "@/lib/toast";
+import { useWaveform } from "@/lib/waveform";
 import { useGenState, stillJobKey, motionJobKey, type GenSlot } from "@/lib/genstate";
 import {
   composePromptWithBrief,
@@ -232,6 +233,64 @@ function InlineText({
     >
       {isEmpty ? emptyLabel ?? placeholder ?? "—" : value}
     </span>
+  );
+}
+
+function Waveform({
+  url,
+  samples = 120,
+  height = 32,
+  color = "var(--color-blood)",
+  className,
+}: {
+  url: string | undefined | null;
+  samples?: number;
+  height?: number;
+  color?: string;
+  className?: string;
+}) {
+  const { data, error } = useWaveform(url, samples);
+  if (!url) return null;
+  return (
+    <svg
+      className={`waveform ${className ?? ""}`}
+      viewBox={`0 0 ${samples} ${height}`}
+      preserveAspectRatio="none"
+      style={{ height, width: "100%" }}
+      aria-hidden
+    >
+      {error ? (
+        <text x="4" y={height / 2} fill="var(--color-fg-faint)" fontSize="9">{error}</text>
+      ) : data ? (
+        data.map((v, i) => {
+          const h = Math.max(1, v * (height - 2));
+          return (
+            <rect
+              key={i}
+              x={i + 0.25}
+              y={(height - h) / 2}
+              width={0.65}
+              height={h}
+              fill={color}
+              opacity={0.85}
+            />
+          );
+        })
+      ) : (
+        <g>
+          {Array.from({ length: samples }, (_, i) => (
+            <rect
+              key={i}
+              x={i + 0.25}
+              y={height / 2 - 1}
+              width={0.65}
+              height={2}
+              fill="var(--color-line-strong)"
+            />
+          ))}
+        </g>
+      )}
+    </svg>
   );
 }
 
@@ -1352,7 +1411,18 @@ export default function HomePage() {
                     setEditingVOId(editingVOId === seg.id ? null : seg.id)
                   }
                 >
-                  v{i + 1} {seg.output_url ? "♪ " : ""}— <span className="vo-text">&ldquo;{seg.text}&rdquo;</span>
+                  <span className="vo-seg-head">
+                    v{i + 1} {seg.output_url ? "♪ " : ""}— <span className="vo-text">&ldquo;{seg.text}&rdquo;</span>
+                  </span>
+                  {seg.output_url ? (
+                    <Waveform
+                      url={seg.output_url}
+                      samples={80}
+                      height={20}
+                      color="var(--color-blood)"
+                      className="vo-seg-wave"
+                    />
+                  ) : null}
                 </button>
                 <Popover
                   open={editingVOId === seg.id}
@@ -1408,7 +1478,16 @@ export default function HomePage() {
               <span>{project.music_track?.output_url ? "♪ ✓" : "♪"} ▾</span>
             </button>
             {project.music_track?.output_url ? (
-              <audio src={project.music_track.output_url} controls className="music-bed-audio" />
+              <>
+                <Waveform
+                  url={project.music_track.output_url}
+                  samples={240}
+                  height={26}
+                  color="var(--color-blood)"
+                  className="music-bed-wave"
+                />
+                <audio src={project.music_track.output_url} controls className="music-bed-audio" />
+              </>
             ) : null}
           </div>
         </div>
