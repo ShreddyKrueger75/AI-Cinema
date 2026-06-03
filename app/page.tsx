@@ -400,13 +400,47 @@ export default function HomePage() {
   const savedSnapshot = savedProjectsMap[project.id];
   const isDirty = !savedSnapshot || savedSnapshot.updated_at !== project.updated_at;
   const isInLibrary = !!savedSnapshot;
+
+  const configuredKeyCountEarly = Object.values(providerKeys).filter((v) => v && v.trim()).length;
+
+  const [welcomeDismissed, setWelcomeDismissed] = useState(true);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (localStorage.getItem("ai-cinema:welcome-dismissed") !== "1") {
+      setWelcomeDismissed(false);
+    }
+  }, []);
+  const dismissWelcome = () => {
+    try { localStorage.setItem("ai-cinema:welcome-dismissed", "1"); } catch {}
+    setWelcomeDismissed(true);
+  };
+  const showWelcome =
+    hydrated && !welcomeDismissed && projectStubs.length === 0 && configuredKeyCountEarly === 0;
+
+  const sessionSpent = useMemo(() => {
+    let total = 0;
+    for (const s of project.sections) {
+      if (s.type !== "clip") continue;
+      for (const st of s.stills) {
+        if (st.output_url && /^https?:\/\//.test(st.output_url)) {
+          total += imageModelCost(st.model);
+        }
+      }
+      for (const v of s.versions) {
+        if (v.kind === "clip" && v.output_url && /^https?:\/\//.test(v.output_url)) {
+          total += motionModelCost(v.motion.model, v.motion.duration_s);
+        }
+      }
+    }
+    return total;
+  }, [project.sections]);
   const saveProjectToLibrary = useProjectLibrary((s) => s.saveProject);
   const loadProjectFromLibrary = useProjectLibrary((s) => s.loadProject);
   const renameProjectInLibrary = useProjectLibrary((s) => s.renameProject);
   const deleteProjectFromLibrary = useProjectLibrary((s) => s.deleteProject);
   const duplicateProjectInLibrary = useProjectLibrary((s) => s.duplicateProject);
 
-  const configuredKeyCount = Object.values(providerKeys).filter((v) => v && v.trim()).length;
+  const configuredKeyCount = configuredKeyCountEarly;
 
   const [aspectMenuOpen, setAspectMenuOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -714,6 +748,47 @@ export default function HomePage() {
         <span className="lockup">by Bloody Finger</span>
       </div>
       <div className="tagline">Cinematic video, made easy. Bring your own model.</div>
+
+      {showWelcome ? (
+        <div className="welcome-banner">
+          <div className="welcome-body">
+            <strong>Welcome to AI Cinema.</strong>
+            <span>
+              You&apos;re in fully usable free-preview mode — Pollinations stills, Ken Burns motion, ⓘ
+              no keys needed.
+            </span>
+            <span>
+              Add real provider keys via 🔑 Keys to unlock Flux, Runway-class motion, ElevenLabs voice and music. Try a
+              starter from ⚀ Templates to see the timeline come to life.
+            </span>
+          </div>
+          <div className="welcome-actions">
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => {
+                dismissWelcome();
+                setProvidersOpen(true);
+              }}
+            >
+              🔑 Add a key
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                dismissWelcome();
+                setTemplatesOpen(true);
+              }}
+            >
+              ⚀ Templates
+            </button>
+            <button type="button" className="btn ghost" onClick={dismissWelcome}>
+              ✕ Got it
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="project-head">
         <div className="project-meta">
@@ -1545,6 +1620,9 @@ export default function HomePage() {
 
       <div className="footstrip">
         <span>// AI CINEMA · BUILT FOR THE LOVE OF THE GAME · MIT</span>
+        <span className="footstrip-mid">
+          {project.sections.length} SECTIONS · {project.vo_segments.length} VO · {projectStubs.length} SAVED · SPENT {formatCost(sessionSpent)}
+        </span>
         <span>BLOODY FINGER SOFTWARE — 2026</span>
       </div>
 

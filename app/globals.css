@@ -99,6 +99,37 @@ button {
   margin-bottom: 32px;
 }
 
+/* ───────────── WELCOME BANNER ───────────── */
+.welcome-banner {
+  margin: 0 0 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--color-blood-faint);
+  background: linear-gradient(135deg, rgba(255, 77, 126, 0.06), rgba(255, 77, 126, 0.02));
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 18px;
+  align-items: center;
+}
+.welcome-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--color-fg-muted);
+  line-height: 1.6;
+}
+.welcome-body strong {
+  color: var(--color-blood);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.welcome-actions { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
+@media (max-width: 840px) {
+  .welcome-banner { grid-template-columns: 1fr; }
+}
+
 /* ───────────── PROJECT HEADER ───────────── */
 .project-head {
   display: flex;
@@ -1951,4 +1982,10 @@ button.trans-marker {
   color: var(--color-fg-faint);
   display: flex;
   justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.footstrip-mid { color: var(--color-fg-muted); flex: 1; text-align: center; }
+@media (max-width: 840px) {
+  .footstrip-mid { text-align: left; flex: 1 1 100%; order: 1; }
 }
