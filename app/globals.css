@@ -884,8 +884,7 @@ button {
 .clip-thumb {
   position: relative;
   width: 100%;
-  aspect-ratio: 9 / 16;
-  margin-bottom: 8px;
+  margin: 0 auto 8px;
   background: var(--color-bg);
   border: 1px solid var(--color-line);
   overflow: hidden;
@@ -896,6 +895,9 @@ button {
   text-transform: uppercase;
   color: var(--color-fg-faint);
 }
+.clip-thumb.aspect-16-9 { aspect-ratio: 16 / 9; max-width: 320px; }
+.clip-thumb.aspect-1-1  { aspect-ratio: 1 / 1;  max-width: 200px; }
+.clip-thumb.aspect-9-16 { aspect-ratio: 9 / 16; max-width: 160px; }
 .clip-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .clip-thumb.empty { background: linear-gradient(135deg, #1a0c14, #281420); color: var(--color-fg-faint); font-style: italic; }
 .clip-thumb.title {

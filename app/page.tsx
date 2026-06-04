@@ -788,12 +788,7 @@ export default function HomePage() {
   const tlGridCols = project.sections.length > 0
     ? project.sections.map((s) => `${Math.max(0.1, s.duration_s)}fr`).join(" ")
     : "1fr";
-  const clipThumbStyle: React.CSSProperties =
-    project.aspect === "16:9"
-      ? { aspectRatio: "16 / 9", height: "auto", maxHeight: 140 }
-      : project.aspect === "1:1"
-        ? { aspectRatio: "1 / 1", height: "auto", maxHeight: 180 }
-        : { aspectRatio: "9 / 16", height: "auto", maxHeight: 220 };
+  const aspectClass = `aspect-${project.aspect.replace(":", "-")}`;
 
   const handleExport = () => {
     downloadProjectJSON(project);
@@ -1390,9 +1385,8 @@ export default function HomePage() {
                   if (section.type === "title") {
                     return (
                       <div
-                        className="clip-thumb title"
+                        className={`clip-thumb title ${aspectClass}`}
                         style={{
-                          ...clipThumbStyle,
                           background: project.title_settings?.background_color ?? "#0a0908",
                           color: project.title_settings?.color ?? "#f4f1ea",
                         }}
@@ -1405,14 +1399,14 @@ export default function HomePage() {
                   }
                   if (thumb) {
                     return (
-                      <div className="clip-thumb" style={clipThumbStyle}>
+                      <div className={`clip-thumb ${aspectClass}`}>
                         <img src={thumb} alt={section.title} />
                         {isVideo ? <span className="clip-thumb-badge">▶</span> : null}
                       </div>
                     );
                   }
                   return (
-                    <div className="clip-thumb empty" style={clipThumbStyle}>
+                    <div className={`clip-thumb empty ${aspectClass}`}>
                       no still
                     </div>
                   );
