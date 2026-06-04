@@ -810,6 +810,7 @@ export default function HomePage() {
 
   return (
     <>
+      <div className="workspace">
       <div className="statusbar">
         <div className="left">
           <span><span className="dot" />SYSTEM // ONLINE</span>
@@ -1796,12 +1797,86 @@ export default function HomePage() {
         />
       ) : null}
 
+      <aside className="workspace-library">
+        <div className="lib-tabs">
+          <button type="button" className="lib-tab active">// PROJECTS</button>
+          <button type="button" className="lib-tab" onClick={() => setTemplatesOpen(true)}>// TEMPLATES</button>
+        </div>
+        <div className="lib-body">
+          <button
+            type="button"
+            className="lib-save"
+            onClick={() => {
+              saveProjectToLibrary(project);
+              toast.success("Saved to library", project.name);
+            }}
+            title="Save snapshot (⌘S)"
+          >
+            ＋ Save current as snapshot
+          </button>
+          <div className="lib-section-title">// SAVED</div>
+          {projectStubs.length === 0 ? (
+            <div className="lib-empty">no saved projects yet</div>
+          ) : (
+            <div className="lib-list">
+              {projectStubs.map((p) => {
+                const isOpen = p.id === project.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`lib-row ${isOpen ? "active" : ""}`}
+                    onClick={() => {
+                      if (isOpen) return;
+                      if (project.updated_at) saveProjectToLibrary(project);
+                      const loaded = loadProjectFromLibrary(p.id);
+                      if (loaded) setProject(loaded);
+                    }}
+                  >
+                    <span className="lib-row-name">
+                      {isOpen ? "● " : ""}{p.name}
+                    </span>
+                    <span className="lib-row-meta">
+                      {p.aspect.replace(":", " : ")} · {p.duration_s.toFixed(1)}s · {p.sections.length} sec
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div className="lib-section-title">// TEMPLATES</div>
+          <div className="lib-list">
+            {TEMPLATES.slice(0, 5).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className="lib-row"
+                onClick={() => {
+                  confirmAsk({
+                    title: `Load ${t.name}?`,
+                    message: "This replaces your current timeline with the template.",
+                    confirm_label: "Load template",
+                    cancel_label: "Keep editing",
+                    destructive: true,
+                    onConfirm: () => setProject(t.build()),
+                  });
+                }}
+              >
+                <span className="lib-row-name">{t.name}</span>
+                <span className="lib-row-meta">{t.description}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </aside>
+
       <div className="footstrip">
         <span>// AI CINEMA · BUILT FOR THE LOVE OF THE GAME · MIT</span>
         <span className="footstrip-mid">
           {project.sections.length} SECTIONS · {project.vo_segments.length} VO · {projectStubs.length} SAVED · SPENT {formatCost(sessionSpent)}
         </span>
         <span>BLOODY FINGER SOFTWARE — 2026</span>
+      </div>
       </div>
 
       <ToastViewport />
