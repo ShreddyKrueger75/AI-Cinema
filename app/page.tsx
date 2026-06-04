@@ -297,6 +297,17 @@ function Waveform({
   );
 }
 
+function templateIcon(id: string): string {
+  switch (id) {
+    case "tpl_blank": return "◯";
+    case "tpl_product_reveal": return "◉";
+    case "tpl_title_card": return "T";
+    case "tpl_tutorial_3shot": return "⌗";
+    case "tpl_dark_drop": return "◖";
+    default: return "▪";
+  }
+}
+
 /* ───────────── PAGE ───────────── */
 
 export default function HomePage() {
@@ -1816,9 +1827,9 @@ export default function HomePage() {
             }}
             title="Save snapshot (⌘S)"
           >
-            ＋ Save current as snapshot
+            <span className="lib-tab-icon" aria-hidden>⊞</span> Save current as snapshot
           </button>
-          <div className="lib-section-title">// SAVED</div>
+          <div className="lib-section-title"><span className="lib-section-icon" aria-hidden>●</span> // SAVED</div>
           {projectStubs.length === 0 ? (
             <div className="lib-empty">no saved projects yet</div>
           ) : (
@@ -1867,7 +1878,7 @@ export default function HomePage() {
               })}
             </div>
           )}
-          <div className="lib-section-title">// TEMPLATES</div>
+          <div className="lib-section-title"><span className="lib-section-icon" aria-hidden>⚀</span> // TEMPLATES</div>
           <div className="lib-list">
             {TEMPLATES.slice(0, 5).map((t) => (
               <button
@@ -1885,7 +1896,10 @@ export default function HomePage() {
                   });
                 }}
               >
-                <span className="lib-row-name">{t.name}</span>
+                <span className="lib-row-name">
+                  <span className="lib-row-icon" aria-hidden>{templateIcon(t.id)}</span>
+                  {t.name}
+                </span>
                 <span className="lib-row-meta">{t.description}</span>
               </button>
             ))}
@@ -3820,7 +3834,7 @@ function TitleFlowBody({
   return (
     <div className="flow-body single">
       <div className="stage full">
-        <div className="stage-title"><span className="num">01</span>TITLE CARD</div>
+        <div className="stage-title"><span className="num">01</span><span className="stage-title-icon" aria-hidden>T</span>TITLE CARD</div>
         <Field label="Text">
           <textarea
             className="field-input tall"
@@ -3985,7 +3999,7 @@ function ClipFlowBody({
     <div className="flow-body">
       {/* STAGE 1 — STILL */}
       <div className="stage">
-        <div className="stage-title"><span className="num">01</span>STILL</div>
+        <div className="stage-title"><span className="num">01</span><span className="stage-title-icon" aria-hidden>▣</span>STILL</div>
 
         <Field label="Image prompt">
           <textarea
@@ -4225,14 +4239,14 @@ function ClipFlowBody({
                 ? "+ Add still first"
                 : stillNeedsKey
                   ? `🔑 Add ${stillProviderName ?? "provider"} key`
-                : "⏵ Generate still"}
+                : "✦ Generate still"}
           </button>
         </div>
       </div>
 
       {/* STAGE 2 — MOTION */}
       <div className="stage">
-        <div className="stage-title"><span className="num">02</span>MOTION</div>
+        <div className="stage-title"><span className="num">02</span><span className="stage-title-icon" aria-hidden>◐</span>MOTION</div>
 
         <Field label="Motion prompt">
           <textarea
@@ -4431,7 +4445,7 @@ function ClipFlowBody({
               ? "● Generating…"
               : motionNeedsKey
                 ? `🔑 Add ${motionProviderName ?? "provider"} key`
-                : "⏵ Generate motion"}
+                : "✦ Generate motion"}
           </button>
         </div>
       </div>

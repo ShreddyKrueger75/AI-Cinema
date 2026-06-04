@@ -189,6 +189,22 @@ a { color: inherit; text-decoration: none; }
   gap: 8px;
 }
 .lib-row.active .lib-row-name { color: var(--color-blood); }
+.lib-row-icon {
+  font-size: 13px;
+  color: var(--color-blood);
+  margin-right: 6px;
+  display: inline-block;
+  width: 14px;
+  text-align: center;
+}
+.lib-row.active .lib-row-icon { color: var(--color-blood); }
+.lib-section-icon {
+  display: inline-block;
+  color: var(--color-blood);
+  margin-right: 4px;
+  font-size: 9px;
+  vertical-align: 1px;
+}
 .lib-row-action {
   font-size: 9px;
   letter-spacing: 0.18em;
@@ -1209,6 +1225,13 @@ button.clip-version:hover { border-color: var(--color-blood-faint); }
   border-bottom: 1px solid var(--color-line);
 }
 .stage-title .num { color: var(--color-blood); margin-right: 8px; }
+.stage-title-icon {
+  color: var(--color-blood);
+  font-size: 13px;
+  margin-right: 6px;
+  letter-spacing: 0;
+  vertical-align: -1px;
+}
 
 .field { margin-bottom: 16px; }
 .field-label {
