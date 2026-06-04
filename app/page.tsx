@@ -1111,8 +1111,8 @@ export default function HomePage() {
           >
             ?
           </button>
-          <button type="button" className="btn ghost" onClick={handleImport}>Import</button>
-          <button type="button" className="btn ghost" onClick={handleExport}>Export</button>
+          <button type="button" className="btn ghost" onClick={handleImport} title="Import a project JSON" aria-label="Import project JSON">⇧ Import</button>
+          <button type="button" className="btn ghost" onClick={handleExport} title="Export the project as JSON" aria-label="Export project JSON">⇩ Export</button>
           <button
             type="button"
             className={`btn ${playPosition !== null ? "primary" : ""}`}
@@ -1129,6 +1129,7 @@ export default function HomePage() {
       <div className="lookbar">
         <LookSlot
           label="// BRIEF"
+          icon="✎"
           value={project.brief?.name}
           open={lookOpen === "brief"}
           onToggle={() => setLookOpen(lookOpen === "brief" ? null : "brief")}
@@ -1149,6 +1150,7 @@ export default function HomePage() {
         </LookSlot>
         <LookSlot
           label="// GRADE"
+          icon="◐"
           value={project.grade?.name}
           open={lookOpen === "grade"}
           onToggle={() => setLookOpen(lookOpen === "grade" ? null : "grade")}
@@ -1169,6 +1171,7 @@ export default function HomePage() {
         </LookSlot>
         <LookSlot
           label="// MUSIC"
+          icon="♫"
           value={project.music_track?.name}
           open={lookOpen === "music"}
           onToggle={() => setLookOpen(lookOpen === "music" ? null : "music")}
@@ -1194,6 +1197,7 @@ export default function HomePage() {
         </LookSlot>
         <LookSlot
           label="// TITLE STYLE"
+          icon="T"
           value={project.title_settings?.name}
           open={lookOpen === "title"}
           onToggle={() => setLookOpen(lookOpen === "title" ? null : "title")}
@@ -1799,8 +1803,8 @@ export default function HomePage() {
 
       <aside className="workspace-library">
         <div className="lib-tabs">
-          <button type="button" className="lib-tab active">// PROJECTS</button>
-          <button type="button" className="lib-tab" onClick={() => setTemplatesOpen(true)}>// TEMPLATES</button>
+          <button type="button" className="lib-tab active"><span className="lib-tab-icon" aria-hidden>⊞</span> // PROJECTS</button>
+          <button type="button" className="lib-tab" onClick={() => setTemplatesOpen(true)}><span className="lib-tab-icon" aria-hidden>⚀</span> // TEMPLATES</button>
         </div>
         <div className="lib-body">
           <button
@@ -2511,6 +2515,7 @@ function ToastViewport() {
 
 function LookSlot({
   label,
+  icon,
   value,
   open,
   onToggle,
@@ -2518,6 +2523,7 @@ function LookSlot({
   children,
 }: {
   label: string;
+  icon?: string;
   value?: string;
   open: boolean;
   onToggle: () => void;
@@ -2527,7 +2533,10 @@ function LookSlot({
   return (
     <div className="slot popover-anchor">
       <button type="button" className="slot-btn" onClick={onToggle}>
-        <span className="label">{label}</span>
+        <span className="label">
+          {icon ? <span className="slot-icon" aria-hidden>{icon}</span> : null}
+          {label}
+        </span>
         <span className="value">
           {value ?? "—"} <span className="caret">▾</span>
         </span>

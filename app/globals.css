@@ -110,6 +110,14 @@ a { color: inherit; text-decoration: none; }
   color: var(--color-blood);
   border-bottom-color: var(--color-blood);
 }
+.lib-tab-icon {
+  font-size: 12px;
+  letter-spacing: 0;
+  margin-right: 4px;
+  color: var(--color-blood);
+  vertical-align: -1px;
+}
+.lib-tab:not(.active) .lib-tab-icon { color: var(--color-fg-muted); }
 .lib-body {
   flex: 1;
   display: flex;
@@ -1609,7 +1617,20 @@ textarea.inline-edit { resize: vertical; min-height: 60px; width: 100%; padding:
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--color-fg-faint);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
+.slot-icon {
+  font-size: 12px;
+  letter-spacing: 0;
+  color: var(--color-blood);
+  line-height: 1;
+  width: 12px;
+  display: inline-flex;
+  justify-content: center;
+}
+.lookbar .slot-btn:hover .slot-icon { color: var(--color-blood); }
 .lookbar .slot-btn .value {
   font-size: 13px;
   color: var(--color-fg);
