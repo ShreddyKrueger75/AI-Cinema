@@ -815,7 +815,7 @@ export default function HomePage() {
           >
             <span className={`dot ${configuredKeyCount === 0 ? "warn" : ""}`} />
             {configuredKeyCount === 0
-              ? "FREE PREVIEW · NO KEY NEEDED"
+              ? "FREE PREVIEW · POLLINATIONS QUEUED · ADD KEY FOR RELIABILITY"
               : `PROVIDERS // ${configuredKeyCount} KEY${configuredKeyCount === 1 ? "" : "S"}`}
           </button>
         </div>
@@ -836,11 +836,12 @@ export default function HomePage() {
           <div className="welcome-body">
             <strong>Welcome to AI Cinema.</strong>
             <span>
-              You&apos;re in fully usable free-preview mode — Pollinations stills, Ken Burns motion, ⓘ
-              no keys needed.
+              Free preview: Pollinations stills (now rate-limited — 1 queued request per IP, retries until they let you through) +
+              Ken Burns motion on top. Title cards + ffmpeg.wasm render still work fully without a key.
             </span>
             <span>
-              Add real provider keys via 🔑 Keys to unlock Flux, Runway-class motion, ElevenLabs voice and music. Try a
+              For reliable generation, add a Replicate key via 🔑 Keys to unlock Flux, MiniMax video, and the rest, or sign up at
+              enter.pollinations.ai for a Pollinations token. Try a
               starter from ⚀ Templates to see the timeline come to life.
             </span>
           </div>
@@ -3179,7 +3180,35 @@ function FlowPanel({
         newSeed(),
         project.brief?.visual,
       );
-      updateStill(section.id, activeStill.id, { output_url: url });
+      const jobKey = stillJobKey(section.id, activeStill.id);
+      setJob(jobKey, { status: "running", startedAt: Date.now() });
+      try {
+        const r = await fetch(url, { credentials: "omit" });
+        if (!r.ok) {
+          let detail = `HTTP ${r.status}`;
+          try {
+            const body = await r.text();
+            const json = JSON.parse(body);
+            if (json?.error) detail = json.error;
+          } catch {
+            // not JSON; keep status code
+          }
+          if (r.status === 402 || /queue/i.test(detail)) {
+            throw new Error(
+              `Pollinations free queue is full — ${detail}. Wait ~30s and try again, sign up at https://enter.pollinations.ai, or add a Replicate key for Flux.`,
+            );
+          }
+          throw new Error(`Pollinations ${r.status}: ${detail}`);
+        }
+        const blob = await r.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        updateStill(section.id, activeStill.id, { output_url: blobUrl });
+        clearJob(jobKey);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setJob(jobKey, { status: "error", error: message });
+        toast.error("Free preview throttled", message);
+      }
       return;
     }
 
@@ -3795,6 +3824,12 @@ function ClipFlowBody({
                 src={activeStill.output_url}
                 alt={activeStill.label}
                 className="preview-img"
+                onError={() =>
+                  toast.error(
+                    "Image didn't load",
+                    "The upstream returned an error before any bytes arrived. Free Pollinations is queued — try again, sign up at enter.pollinations.ai, or add a Replicate key.",
+                  )
+                }
               />
             ) : null}
             {activeStill ? (
