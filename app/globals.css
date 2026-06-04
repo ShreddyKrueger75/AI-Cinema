@@ -171,8 +171,30 @@ a { color: inherit; text-decoration: none; }
   border-color: var(--color-blood);
   background: var(--color-blood-soft);
 }
-.lib-row-name { font-size: 12px; color: var(--color-fg); letter-spacing: 0.04em; }
+.lib-row-name {
+  font-size: 12px;
+  color: var(--color-fg);
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .lib-row.active .lib-row-name { color: var(--color-blood); }
+.lib-row-action {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-blood);
+  padding: 2px 6px;
+  border: 1px solid var(--color-blood-faint);
+  background: var(--color-blood-soft);
+  opacity: 0;
+  transition: opacity .12s;
+  flex-shrink: 0;
+}
+.lib-row:hover .lib-row-action,
+.lib-row:focus-visible .lib-row-action { opacity: 1; }
 .lib-row-meta {
   font-size: 9px;
   letter-spacing: 0.16em;
@@ -1251,6 +1273,9 @@ textarea.field-input:focus,
   place-items: center;
   overflow: hidden;
 }
+.preview-box.aspect-16-9 { aspect-ratio: 16 / 9; }
+.preview-box.aspect-1-1 { aspect-ratio: 1 / 1; }
+.preview-box.aspect-9-16 { aspect-ratio: 9 / 16; }
 .preview-box::after {
   content: "";
   position: absolute;
@@ -1916,6 +1941,36 @@ button.gen-cost-link:hover {
   padding: 4px 0 0;
   font-style: italic;
 }
+button.ref-hint {
+  font-family: var(--font-mono);
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  padding: 6px 8px;
+  margin: 2px -8px 0;
+  border-radius: 0;
+  transition: background .12s, color .12s;
+}
+button.ref-hint:hover,
+button.ref-hint:focus-visible {
+  background: var(--color-blood-soft);
+  color: var(--color-blood);
+  font-style: normal;
+  outline: none;
+}
+button.ref-hint::after {
+  content: " · click to switch";
+  font-style: normal;
+  opacity: 0;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-size: 9px;
+  margin-left: 4px;
+  transition: opacity .12s;
+}
+button.ref-hint:hover::after,
+button.ref-hint:focus-visible::after { opacity: 1; }
 
 /* ───────────── PROVIDERS DIALOG ───────────── */
 .providers-notice {

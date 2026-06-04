@@ -680,13 +680,8 @@ export default function HomePage() {
         setPaletteOpen((o) => !o);
         return;
       }
-      if (editable) return;
-
-      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
-        e.preventDefault();
-        setHelpOpen((o) => !o);
-        return;
-      }
+      // Esc fires before the editable bail so it dismisses dialogs even when an
+      // input inside the dialog has focus.
       if (e.key === "Escape") {
         if (useConfirm.getState().prompt) { useConfirm.getState().cancel(); return; }
         if (paletteOpen) { setPaletteOpen(false); return; }
@@ -694,7 +689,14 @@ export default function HomePage() {
         if (renderOpen) { setRenderOpen(false); return; }
         if (providersOpen) { setProvidersOpen(false); return; }
         if (lookOpen) { setLookOpen(null); return; }
-        if (activeSectionId) { setActiveSection(null); return; }
+        if (!editable && activeSectionId) { setActiveSection(null); return; }
+        return;
+      }
+      if (editable) return;
+
+      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
+        e.preventDefault();
+        setHelpOpen((o) => !o);
         return;
       }
       if (e.key === " " || e.code === "Space") {
@@ -896,11 +898,11 @@ export default function HomePage() {
                 className={`save-pill ${isDirty ? "dirty" : "saved"}`}
                 title={
                   isDirty
-                    ? "Unsaved changes since last library snapshot"
+                    ? "Edited since last library snapshot — ⌘S to save again"
                     : "In sync with the library snapshot"
                 }
               >
-                {isDirty ? "● UNSAVED" : "✓ SAVED"}
+                {isDirty ? "● EDITED" : "✓ SAVED"}
               </span>
             ) : (
               <span className="save-pill new" title="Not in your project library yet">
@@ -1026,6 +1028,7 @@ export default function HomePage() {
                           type="button"
                           className="btn ghost proj-act danger"
                           title="Delete"
+                          aria-label={`Delete ${p.name} from library`}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (confirm(`Delete "${p.name}" from library? (current project stays loaded)`)) {
@@ -1089,6 +1092,7 @@ export default function HomePage() {
             onClick={handleUndo}
             disabled={historyPastLen === 0}
             title="Undo (⌘Z)"
+            aria-label="Undo (⌘Z)"
           >
             ↶
           </button>
@@ -1098,6 +1102,7 @@ export default function HomePage() {
             onClick={handleRedo}
             disabled={historyFutureLen === 0}
             title="Redo (⇧⌘Z)"
+            aria-label="Redo (⇧⌘Z)"
           >
             ↷
           </button>
@@ -1107,6 +1112,7 @@ export default function HomePage() {
             className="btn ghost"
             onClick={() => setHelpOpen(true)}
             title="Keyboard shortcuts (?)"
+            aria-label="Keyboard shortcuts (?)"
           >
             ?
           </button>
@@ -1826,15 +1832,34 @@ export default function HomePage() {
                     key={p.id}
                     type="button"
                     className={`lib-row ${isOpen ? "active" : ""}`}
+                    aria-label={
+                      isOpen
+                        ? `${p.name} — currently loaded`
+                        : `Load ${p.name} snapshot — replaces current project`
+                    }
+                    title={
+                      isOpen
+                        ? "Currently loaded — edits flow into the live project"
+                        : "Click to load this snapshot · current project is auto-saved first"
+                    }
                     onClick={() => {
-                      if (isOpen) return;
-                      if (project.updated_at) saveProjectToLibrary(project);
+                      if (isOpen) {
+                        toast.info(`${p.name} is already loaded`);
+                        return;
+                      }
+                      if (isInLibrary) saveProjectToLibrary(project);
                       const loaded = loadProjectFromLibrary(p.id);
-                      if (loaded) setProject(loaded);
+                      if (loaded) {
+                        setProject(loaded);
+                        toast.success("Loaded snapshot", `${p.name} · ${p.sections.length} sections`);
+                      } else {
+                        toast.error("Load failed", "Snapshot not found in library");
+                      }
                     }}
                   >
                     <span className="lib-row-name">
                       {isOpen ? "● " : ""}{p.name}
+                      {!isOpen ? <span className="lib-row-action">↻ Load</span> : null}
                     </span>
                     <span className="lib-row-meta">
                       {p.aspect.replace(":", " : ")} · {p.duration_s.toFixed(1)}s · {p.sections.length} sec
@@ -2295,8 +2320,21 @@ function PreviewStage({
                   onClick={(e) => {
                     const canvas = (e.currentTarget.closest(".stage-canvas") as HTMLElement) ?? null;
                     if (!canvas) return;
-                    if (document.fullscreenElement) document.exitFullscreen();
-                    else canvas.requestFullscreen?.();
+                    if (document.fullscreenElement) {
+                      document.exitFullscreen().catch((err) => {
+                        toast.warn("Couldn't exit fullscreen", err?.message ?? String(err));
+                      });
+                      return;
+                    }
+                    const req = canvas.requestFullscreen?.bind(canvas);
+                    if (!req) {
+                      toast.warn("Fullscreen unsupported", "This browser doesn't expose requestFullscreen on the preview canvas.");
+                      return;
+                    }
+                    req().catch((err: unknown) => {
+                      const msg = err instanceof Error ? err.message : String(err);
+                      toast.warn("Fullscreen blocked", msg);
+                    });
                   }}
                 >
                   ⛶
@@ -2646,7 +2684,7 @@ function BriefEditor({
     <div className="editor">
       <div className="editor-head">
         <span>// BRIEF</span>
-        <button type="button" className="btn ghost" onClick={onClose}>✕</button>
+        <button type="button" className="btn ghost" onClick={onClose} aria-label="Close brief editor" title="Close">✕</button>
       </div>
       <LibrarySection
         library={library}
@@ -2747,6 +2785,7 @@ function RefList({
                 type="button"
                 className="ref-remove"
                 title="Remove"
+                aria-label={`Remove reference ${i + 1}`}
                 onClick={() => onChange(refs.filter((_, j) => j !== i))}
               >
                 ✕
@@ -2809,7 +2848,7 @@ function GradeEditor({
     <div className="editor">
       <div className="editor-head">
         <span>// GRADE</span>
-        <button type="button" className="btn ghost" onClick={onClose}>✕</button>
+        <button type="button" className="btn ghost" onClick={onClose} aria-label="Close grade editor" title="Close">✕</button>
       </div>
       <LibrarySection
         library={library}
@@ -2918,7 +2957,7 @@ function MusicEditor({
     <div className="editor">
       <div className="editor-head">
         <span>// MUSIC</span>
-        <button type="button" className="btn ghost" onClick={onClose}>✕</button>
+        <button type="button" className="btn ghost" onClick={onClose} aria-label="Close music editor" title="Close">✕</button>
       </div>
       <LibrarySection
         library={library}
@@ -3007,7 +3046,7 @@ function TitleStyleEditor({
     <div className="editor">
       <div className="editor-head">
         <span>// TITLE STYLE</span>
-        <button type="button" className="btn ghost" onClick={onClose}>✕</button>
+        <button type="button" className="btn ghost" onClick={onClose} aria-label="Close title style editor" title="Close">✕</button>
       </div>
       <LibrarySection
         library={library}
@@ -3793,6 +3832,7 @@ function TitleFlowBody({
                       type="button"
                       className="vrow-remove"
                       title="Remove version"
+                      aria-label={`Remove version ${v.label}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         onRemoveVersion(v.id);
@@ -3984,34 +4024,47 @@ function ClipFlowBody({
             <div className="field-pill cost">{formatCost(stillCost)}</div>
           </Field>
         </div>
-        {activeStill ? (
-          <div className="ref-hint">
-            {(() => {
-              const refSectionId = parseLastFrameRef(activeStill.input_ref);
-              const briefRef = project.brief?.refs?.[0];
-              const supports = imageModelSupportsReference(activeStill.model as never);
-              if (refSectionId) {
-                const sec = project.sections.find((s) => s.id === refSectionId);
-                const label = sec ? `${sec.index.toString().padStart(2, "0")} last frame` : "previous frame";
-                return supports
-                  ? `→ ${label} feeds into the still as init image (prompt_strength 0.68)`
-                  : `→ ${label} captured but ignored; switch to SDXL for init-image continuity`;
-              }
-              if (briefRef) {
-                return supports
-                  ? `→ brief reference image used as init (prompt_strength 0.68)`
-                  : `→ brief reference image ignored; SDXL accepts an init image`;
-              }
-              return null;
-            })()}
-          </div>
-        ) : null}
+        {activeStill ? (() => {
+          const refSectionId = parseLastFrameRef(activeStill.input_ref);
+          const briefRef = project.brief?.refs?.[0];
+          const supports = imageModelSupportsReference(activeStill.model as never);
+          let text: string | null = null;
+          if (refSectionId) {
+            const sec = project.sections.find((s) => s.id === refSectionId);
+            const label = sec ? `${sec.index.toString().padStart(2, "0")} last frame` : "previous frame";
+            text = supports
+              ? `→ ${label} feeds into the still as init image (prompt_strength 0.68)`
+              : `→ ${label} captured but ignored; switch to SDXL for init-image continuity`;
+          } else if (briefRef) {
+            text = supports
+              ? `→ brief reference image used as init (prompt_strength 0.68)`
+              : `→ brief reference image ignored; SDXL accepts an init image`;
+          }
+          if (!text) return null;
+          if (supports) return <div className="ref-hint">{text}</div>;
+          return (
+            <button
+              type="button"
+              className="ref-hint"
+              title="Switch model to SDXL so the reference image is used as an init image"
+              aria-label="Switch model to SDXL to use reference image"
+              onClick={() => {
+                onUpdateStill(activeStill.id, { model: "sdxl" });
+                toast.success("Model switched", "SDXL accepts init images · regenerate to apply");
+              }}
+            >
+              {text}
+            </button>
+          );
+        })() : null}
 
         <div className="preview-row">
           <div
-            className={`preview-box${activeStill?.output_url ? " has-image" : ""}${
-              stillJob?.status === "running" ? " busy" : ""
-            }${stillJob?.status === "error" ? " errored" : ""}`}
+            className={`preview-box aspect-${project.aspect.replace(":", "-")}${
+              activeStill?.output_url ? " has-image" : ""
+            }${stillJob?.status === "running" ? " busy" : ""}${
+              stillJob?.status === "error" ? " errored" : ""
+            }`}
           >
             {activeStill?.output_url ? (
               <img
@@ -4072,6 +4125,7 @@ function ClipFlowBody({
                         type="button"
                         className="vrow-remove"
                         title="Remove still"
+                        aria-label={`Remove still ${still.label}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           onRemoveStill(still.id);
@@ -4221,9 +4275,11 @@ function ClipFlowBody({
 
         <div className="preview-row">
           <div
-            className={`preview-box motion${motionStillUrl || motionVideoUrl ? " has-image" : ""}${
-              motionJob?.status === "running" ? " busy" : ""
-            }${motionJob?.status === "error" ? " errored" : ""}`}
+            className={`preview-box motion aspect-${project.aspect.replace(":", "-")}${
+              motionStillUrl || motionVideoUrl ? " has-image" : ""
+            }${motionJob?.status === "running" ? " busy" : ""}${
+              motionJob?.status === "error" ? " errored" : ""
+            }`}
           >
             {motionVideoUrl ? (
               <video
@@ -4294,6 +4350,7 @@ function ClipFlowBody({
                         type="button"
                         className="vrow-remove"
                         title="Remove version"
+                        aria-label={`Remove version ${v.label}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           onRemoveClipVersion(v.id);
