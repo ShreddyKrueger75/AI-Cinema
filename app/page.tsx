@@ -786,6 +786,12 @@ export default function HomePage() {
   const tlGridCols = project.sections.length > 0
     ? project.sections.map((s) => `${Math.max(0.1, s.duration_s)}fr`).join(" ")
     : "1fr";
+  const clipThumbStyle: React.CSSProperties =
+    project.aspect === "16:9"
+      ? { aspectRatio: "16 / 9", height: "auto", maxHeight: 140 }
+      : project.aspect === "1:1"
+        ? { aspectRatio: "1 / 1", height: "auto", maxHeight: 180 }
+        : { aspectRatio: "9 / 16", height: "auto", maxHeight: 220 };
 
   const handleExport = () => {
     downloadProjectJSON(project);
@@ -1379,6 +1385,7 @@ export default function HomePage() {
                       <div
                         className="clip-thumb title"
                         style={{
+                          ...clipThumbStyle,
                           background: project.title_settings?.background_color ?? "#0a0908",
                           color: project.title_settings?.color ?? "#f4f1ea",
                         }}
@@ -1391,13 +1398,17 @@ export default function HomePage() {
                   }
                   if (thumb) {
                     return (
-                      <div className="clip-thumb">
+                      <div className="clip-thumb" style={clipThumbStyle}>
                         <img src={thumb} alt={section.title} />
                         {isVideo ? <span className="clip-thumb-badge">▶</span> : null}
                       </div>
                     );
                   }
-                  return <div className="clip-thumb empty">no still</div>;
+                  return (
+                    <div className="clip-thumb empty" style={clipThumbStyle}>
+                      no still
+                    </div>
+                  );
                 })()}
                 <div className="clip-title">
                   {section.title}
@@ -2070,11 +2081,16 @@ function PreviewStage({
   const aspectRatio =
     project.aspect === "16:9" ? "16 / 9" : project.aspect === "1:1" ? "1 / 1" : "9 / 16";
 
+  const handleSeekToSection = (idx: number) => {
+    const next = ((idx % project.sections.length) + project.sections.length) % project.sections.length;
+    setActiveSection(project.sections[next].id);
+  };
+
   return (
     <div className="preview-stage">
       <div className="stage-canvas-wrap">
         <div
-          className={`stage-canvas aspect-${project.aspect.replace(":", "-")}`}
+          className={`stage-canvas aspect-${project.aspect.replace(":", "-")} ${isPlaying ? "playing" : "paused"}`}
           style={{ aspectRatio }}
         >
           {section.type === "title" ? (
@@ -2095,7 +2111,6 @@ function PreviewStage({
               muted
               loop
               playsInline
-              controls={!isPlaying}
             />
           ) : stillUrl ? (
             <img
@@ -2112,62 +2127,113 @@ function PreviewStage({
           ) : (
             <div className="stage-empty">
               <span>no still generated</span>
-              <span className="stage-empty-hint">click section ▾ to open the flow panel</span>
+              <span className="stage-empty-hint">click a section in the timeline · open its flow panel to generate</span>
             </div>
           )}
+
           <div className="stage-hud">
             <span className="stage-idx">{section.index.toString().padStart(2, "0")}</span>
             <span className="stage-title-text">{section.title}</span>
             <span className="stage-type">{section.type.toUpperCase()}</span>
           </div>
+
+          {/* Center play overlay when paused */}
+          {!isPlaying ? (
+            <button
+              type="button"
+              className="stage-center-play"
+              onClick={onTogglePlay}
+              aria-label="Play preview"
+              title="Play preview (Space)"
+            >
+              <span className="stage-center-play-glyph">▶</span>
+            </button>
+          ) : null}
+
+          {/* Bottom overlay control bar */}
+          <div className="stage-chrome" onClick={(e) => e.stopPropagation()}>
+            <div className="stage-scrubber" role="presentation">
+              {project.sections.map((s, i) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`stage-scrub-seg ${i === currentIndex ? "active" : ""} ${i < currentIndex ? "past" : ""}`}
+                  style={{ flex: Math.max(0.1, s.duration_s) }}
+                  onClick={() => setActiveSection(s.id)}
+                  title={`Jump to ${s.index.toString().padStart(2, "0")} ${s.title} · ${formatTimecode(project.sections.slice(0, i).reduce((a, x) => a + x.duration_s, 0))}`}
+                  aria-label={`Jump to section ${s.index} ${s.title}`}
+                />
+              ))}
+            </div>
+            <div className="stage-chrome-row">
+              <div className="stage-chrome-left">
+                <button
+                  type="button"
+                  className="stage-iconbtn"
+                  title="Previous section"
+                  aria-label="Previous section"
+                  onClick={() => handleSeekToSection(currentIndex - 1)}
+                >
+                  ⏮
+                </button>
+                <button
+                  type="button"
+                  className="stage-iconbtn primary"
+                  title={isPlaying ? "Pause (Space)" : "Play (Space)"}
+                  aria-label={isPlaying ? "Pause preview" : "Play preview"}
+                  onClick={onTogglePlay}
+                >
+                  {isPlaying ? "❚❚" : "▶"}
+                </button>
+                <button
+                  type="button"
+                  className="stage-iconbtn"
+                  title="Next section"
+                  aria-label="Next section"
+                  onClick={() => handleSeekToSection(currentIndex + 1)}
+                >
+                  ⏭
+                </button>
+                {isPlaying ? (
+                  <button
+                    type="button"
+                    className="stage-iconbtn"
+                    title="Stop"
+                    aria-label="Stop preview"
+                    onClick={onStop}
+                  >
+                    ◼
+                  </button>
+                ) : null}
+                <span className="stage-chrome-time">
+                  {formatTimecode(startSeconds)}
+                  <span className="stage-divider">/</span>
+                  {formatTimecode(total)}
+                </span>
+              </div>
+              <div className="stage-chrome-right">
+                <button
+                  type="button"
+                  className="stage-iconbtn"
+                  title="Fullscreen"
+                  aria-label="Toggle fullscreen"
+                  onClick={(e) => {
+                    const canvas = (e.currentTarget.closest(".stage-canvas") as HTMLElement) ?? null;
+                    if (!canvas) return;
+                    if (document.fullscreenElement) document.exitFullscreen();
+                    else canvas.requestFullscreen?.();
+                  }}
+                >
+                  ⛶
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-      <div className="stage-controls">
-        <button
-          type="button"
-          className="stage-prev"
-          title="Previous section"
-          onClick={() => {
-            const next = currentIndex <= 0 ? project.sections.length - 1 : currentIndex - 1;
-            setActiveSection(project.sections[next].id);
-          }}
-        >
-          ⏮
-        </button>
-        <button
-          type="button"
-          className={`stage-play ${isPlaying ? "playing" : ""}`}
-          onClick={onTogglePlay}
-          title={isPlaying ? "Pause (Space)" : "Play timeline (Space)"}
-        >
-          {isPlaying ? "❚❚" : "▶"}
-        </button>
-        <button
-          type="button"
-          className="stage-prev"
-          title="Stop"
-          onClick={onStop}
-          disabled={!isPlaying}
-        >
-          ◼
-        </button>
-        <button
-          type="button"
-          className="stage-prev"
-          title="Next section"
-          onClick={() => {
-            const next = currentIndex >= project.sections.length - 1 ? 0 : currentIndex + 1;
-            setActiveSection(project.sections[next].id);
-          }}
-        >
-          ⏭
-        </button>
-        <div className="stage-timecode">
-          <span>{formatTimecode(startSeconds)}</span>
-          <span className="stage-divider">/</span>
-          <span>{formatTimecode(total)}</span>
-        </div>
-        <div className="stage-aspect-picker" role="radiogroup" aria-label="Aspect ratio">
+
+      <div className="stage-meta">
+        <div className="stage-meta-aspect" role="radiogroup" aria-label="Aspect ratio">
           {ASPECT_OPTIONS.map((a) => (
             <button
               key={a}
@@ -2182,6 +2248,13 @@ function PreviewStage({
               <span className="aspect-label">{a}</span>
             </button>
           ))}
+        </div>
+        <div className="stage-meta-info">
+          <span>{section.index.toString().padStart(2, "0")} / {project.sections.length}</span>
+          <span className="stage-divider">·</span>
+          <span>{section.title}</span>
+          <span className="stage-divider">·</span>
+          <span>{section.duration_s.toFixed(1)}s</span>
         </div>
       </div>
     </div>
