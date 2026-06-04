@@ -3370,6 +3370,7 @@ function FlowPanel({
       );
       const jobKey = stillJobKey(section.id, activeStill.id);
       setJob(jobKey, { status: "running", startedAt: Date.now() });
+      let throttled = false;
       try {
         const r = await fetch(url, { credentials: "omit" });
         if (!r.ok) {
@@ -3382,8 +3383,9 @@ function FlowPanel({
             // not JSON; keep status code
           }
           if (r.status === 402 || /queue/i.test(detail)) {
+            throttled = true;
             throw new Error(
-              `Pollinations free queue is full — ${detail}. Wait ~30s and try again, sign up at https://enter.pollinations.ai, or add a Replicate key for Flux.`,
+              `Pollinations free queue is full — ${detail}.`,
             );
           }
           throw new Error(`Pollinations ${r.status}: ${detail}`);
@@ -3392,10 +3394,37 @@ function FlowPanel({
         const blobUrl = URL.createObjectURL(blob);
         updateStill(section.id, activeStill.id, { output_url: blobUrl });
         clearJob(jobKey);
+        return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        const replicateToken = providerKeys.replicate;
+        if (throttled && replicateToken) {
+          toast.info("Pollinations queued", "Falling back to Flux Schnell · ~$0.003");
+          try {
+            const fallbackUrl = await runReplicateImage({
+              model: "flux-schnell",
+              prompt: composedPrompt,
+              aspect: project.aspect,
+              apiToken: replicateToken,
+            });
+            updateStill(section.id, activeStill.id, { output_url: fallbackUrl });
+            clearJob(jobKey);
+            toast.success("Fallback succeeded", "Generated on Flux Schnell · switch the still's model to make it stick");
+            return;
+          } catch (fallbackErr) {
+            const fbMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+            setJob(jobKey, { status: "error", error: fbMsg });
+            toast.error("Flux Schnell fallback failed", fbMsg);
+            return;
+          }
+        }
         setJob(jobKey, { status: "error", error: message });
-        toast.error("Free preview throttled", message);
+        toast.error(
+          throttled ? "Free preview throttled" : "Generation failed",
+          throttled
+            ? `${message} Wait ~30s, sign up at https://enter.pollinations.ai, or add a Replicate key for automatic Flux Schnell fallback.`
+            : message,
+        );
       }
       return;
     }
