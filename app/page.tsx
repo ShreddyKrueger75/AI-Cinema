@@ -388,6 +388,7 @@ export default function HomePage() {
   const removeGraphic = useStore((s) => s.removeGraphic);
   const updateBrief = useStore((s) => s.updateBrief);
   const updateGrade = useStore((s) => s.updateGrade);
+  const setGrade = useStore((s) => s.setGrade);
   const updateMusic = useStore((s) => s.updateMusic);
   const updateTitleStyle = useStore((s) => s.updateTitleStyle);
   const updateStill = useStore((s) => s.updateStill);
@@ -1202,7 +1203,9 @@ export default function HomePage() {
             onChange={updateGrade}
             onLoadPreset={(item) => {
               const { id: _drop, ...rest } = item;
-              updateGrade(rest);
+              // Hard replace, not merge — old adjustments (missing keys like
+              // saturation) shouldn't bleed through and zero out the preset.
+              setGrade(rest);
             }}
             onSaveAs={(name) => project.grade && saveGradeToLibrary(project.grade, name)}
             onRemovePreset={(id) => removeLibraryItem("grade", id)}
