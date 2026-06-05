@@ -62,7 +62,7 @@ export default async function ResetPasswordPage({
         <div className="auth-head">
           <div className="auth-wordmark">
             <span className="auth-brand">
-              Cinema <span className="ai">AI</span>
+              <span className="ai">AI</span> Cinema
             </span>
           </div>
           <div className="auth-tagline">Cinematic video, made easy. Bring your own model.</div>

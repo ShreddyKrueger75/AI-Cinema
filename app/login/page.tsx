@@ -49,7 +49,7 @@ export default async function LoginPage({
       <div className="auth-card">
         <div className="auth-head">
           <div className="auth-wordmark">
-            <span className="auth-brand">Cinema <span className="ai">AI</span></span>
+            <span className="auth-brand"><span className="ai">AI</span> Cinema</span>
           </div>
           <div className="auth-tagline">Cinematic video, made easy. Bring your own model.</div>
         </div>

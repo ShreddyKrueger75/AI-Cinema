@@ -4,14 +4,14 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error("RESEND_API_KEY is not set.");
 
-  const from = process.env.RESEND_FROM ?? "Cinema AI <onboarding@resend.dev>";
+  const from = process.env.RESEND_FROM ?? "AI Cinema <onboarding@resend.dev>";
 
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Reset your Cinema AI password</title>
+<title>Reset your AI Cinema password</title>
 <style>
   body { margin: 0; padding: 0; background: #0c0b0a; font-family: 'JetBrains Mono', 'Courier New', monospace; color: #c8b8aa; }
   .wrap { max-width: 520px; margin: 48px auto; padding: 0 24px; }
@@ -31,7 +31,7 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
 <body>
 <div class="wrap">
   <div class="card">
-    <p class="brand">Cinema <span class="ai">AI</span></p>
+    <p class="brand"><span class="ai">AI</span> Cinema</p>
     <p class="tagline">Cinematic video, made easy. Bring your own model.</p>
 
     <p class="label">// RESET PASSWORD</p>
@@ -45,13 +45,13 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
 
     <p style="margin-top:24px;margin-bottom:0;">This link expires in <strong>1 hour</strong>. If you didn't request a reset, you can safely ignore this email.</p>
 
-    <div class="foot">Cinema AI · Cinematic video, made easy.</div>
+    <div class="foot">AI Cinema · Cinematic video, made easy.</div>
   </div>
 </div>
 </body>
 </html>`;
 
-  const text = `// RESET PASSWORD — Cinema AI\n\nSet a new password for your account:\n\n${resetUrl}\n\nThis link expires in 1 hour. If you didn't request a reset, ignore this email.`;
+  const text = `// RESET PASSWORD — AI Cinema\n\nSet a new password for your account:\n\n${resetUrl}\n\nThis link expires in 1 hour. If you didn't request a reset, ignore this email.`;
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -62,7 +62,7 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
     body: JSON.stringify({
       from,
       to: [to],
-      subject: "// RESET PASSWORD — Cinema AI",
+      subject: "// RESET PASSWORD — AI Cinema",
       html,
       text,
     }),
