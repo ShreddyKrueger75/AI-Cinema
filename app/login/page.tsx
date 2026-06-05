@@ -6,13 +6,14 @@ import { isKvConfigured } from "@/lib/users";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; callbackUrl?: string }>;
+  searchParams: Promise<{ error?: string; callbackUrl?: string; message?: string }>;
 }) {
   const session = await auth();
   if (session?.user) redirect("/");
 
   const params = await searchParams;
   const error = params.error;
+  const message = params.message;
   const callbackUrl = params.callbackUrl ?? "/";
   const kvReady = isKvConfigured();
 
@@ -59,6 +60,7 @@ export default async function LoginPage({
         {!kvReady ? (
           <div className="auth-error">⚠ Cloud accounts are not configured. Set up Vercel KV to enable sign-in.</div>
         ) : null}
+        {message ? <div className="auth-success">✓ {decodeURIComponent(message)}</div> : null}
         {error ? <div className="auth-error">⚠ {decodeURIComponent(error)}</div> : null}
 
         <form action={doLogin} className="auth-form">
@@ -82,6 +84,7 @@ export default async function LoginPage({
               minLength={8}
               placeholder="At least 8 characters"
             />
+            <Link href="/forgot-password" className="auth-forgot">Forgot password?</Link>
           </label>
           <button type="submit" className="auth-submit">Sign in →</button>
         </form>
