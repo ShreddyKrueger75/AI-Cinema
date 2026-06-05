@@ -906,6 +906,57 @@ button {
 .ruler span:last-child { border-right: 1px solid var(--color-line); }
 
 .clips-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; position: relative; }
+.tl-row-label {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-fg-faint);
+  padding: 8px 0 6px;
+  border-bottom: 1px dashed var(--color-line);
+}
+.graphics-row {
+  min-height: 0;
+  margin-bottom: 4px;
+}
+.graphics-row .clip-slot {
+  padding: 8px 10px;
+  border-left: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+  cursor: pointer;
+  transition: background .12s;
+}
+.graphics-row .clip-slot:last-child { border-right: 1px solid var(--color-line); }
+.graphics-row .clip-slot.empty {
+  background: transparent;
+  pointer-events: none;
+}
+.graphics-row .clip-slot.empty::after {
+  content: "";
+  display: block;
+  height: 1px;
+}
+.graphics-row .clip-slot.graphic-slot {
+  background: var(--color-surface);
+}
+.graphics-row .clip-slot.graphic-slot:hover {
+  background: var(--color-elev);
+}
+.graphics-row .clip-slot.graphic-slot.active {
+  background: var(--color-blood-soft);
+  border-color: var(--color-blood-faint);
+}
+.graphics-row .clip-thumb {
+  margin-bottom: 4px;
+  max-height: 70px;
+}
+.clip-slot-label {
+  font-size: 10px;
+  color: var(--color-fg);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .clip {
   position: relative;
   padding: 16px 14px;

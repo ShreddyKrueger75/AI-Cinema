@@ -1122,7 +1122,7 @@ export default function HomePage() {
           />
         </LookSlot>
         <LookSlot
-          label="// TITLE STYLE"
+          label="// GRAPHIC STYLE"
           icon="T"
           value={project.title_settings?.name}
           open={lookOpen === "title"}
@@ -1197,11 +1197,50 @@ export default function HomePage() {
           ))}
         </div>
 
+        <div className="tl-row-label">// GRAPHICS</div>
+        <div
+          className="clips-row graphics-row"
+          style={{ gridTemplateColumns: tlGridCols }}
+        >
+          {project.sections.map((section) => {
+            if (section.type !== "title") {
+              return <div key={section.id} className="clip-slot empty" />;
+            }
+            const isActive = section.id === activeSectionId;
+            const activeVer = section.versions.find((v) => v.id === section.active_version_id);
+            const text = activeVer && activeVer.kind === "title" ? activeVer.text : "TITLE";
+            return (
+              <div
+                key={section.id}
+                className={`clip-slot graphic-slot ${isActive ? "active" : ""}`}
+                onClick={() => setActiveSection(section.id)}
+                role="button"
+                aria-label={`Open graphic ${section.title}`}
+              >
+                <div
+                  className={`clip-thumb title ${aspectClass}`}
+                  style={{
+                    background: project.title_settings?.background_color ?? "#0a0908",
+                    color: project.title_settings?.color ?? "#f4f1ea",
+                  }}
+                >
+                  <span>{text.slice(0, 16)}</span>
+                </div>
+                <div className="clip-slot-label">{section.title}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="tl-row-label">// VIDEO</div>
         <div
           className="clips-row"
           style={{ gridTemplateColumns: tlGridCols }}
         >
           {project.sections.map((section) => {
+            if (section.type === "title") {
+              return <div key={section.id} className="clip-slot empty" />;
+            }
             const isActive = section.id === activeSectionId;
             const isPreviewing = section.id === previewSectionId;
             const versionIdx = section.versions.findIndex((v) => v.id === section.active_version_id);
@@ -1210,11 +1249,6 @@ export default function HomePage() {
             const trans = transitionsByTo.get(section.id);
             const activeVer = section.versions.find((v) => v.id === section.active_version_id);
             const readyKind: "ready" | "still" | "draft" | "missing" = (() => {
-              if (section.type === "title") {
-                return activeVer && activeVer.kind === "title" && activeVer.text.trim().length > 0
-                  ? "ready"
-                  : "missing";
-              }
               if (activeVer && activeVer.kind === "clip" && activeVer.output_url) return "ready";
               const stillId = activeVer && activeVer.kind === "clip" ? activeVer.still_ref ?? section.active_still_id : section.active_still_id;
               const still = stillId ? section.stills.find((s) => s.id === stillId) : null;
@@ -1306,7 +1340,7 @@ export default function HomePage() {
                       readyKind === "draft" ? "Draft — nothing generated" :
                       "Missing"
                     } />
-                    {section.index.toString().padStart(2, "0")} // {section.type.toUpperCase()}
+                    {section.index.toString().padStart(2, "0")} // CLIP
                   </div>
                   {section.type === "clip" ? (
                     <button
@@ -1348,21 +1382,6 @@ export default function HomePage() {
                   const still = stillRef ? section.stills.find((s) => s.id === stillRef) : null;
                   const thumb = still?.output_url;
                   const isVideo = v && v.kind === "clip" && v.output_url && /^https?:\/\//.test(v.output_url);
-                  if (section.type === "title") {
-                    return (
-                      <div
-                        className={`clip-thumb title ${aspectClass}`}
-                        style={{
-                          background: project.title_settings?.background_color ?? "#0a0908",
-                          color: project.title_settings?.color ?? "#f4f1ea",
-                        }}
-                      >
-                        <span>
-                          {v && v.kind === "title" ? v.text.slice(0, 16) : "TITLE"}
-                        </span>
-                      </div>
-                    );
-                  }
                   if (thumb) {
                     return (
                       <div className={`clip-thumb ${aspectClass}`}>
@@ -1479,7 +1498,7 @@ export default function HomePage() {
                         setInsertAfterId(null);
                       }}
                     >
-                      Title card
+                      Graphic
                     </button>
                   </Popover>
                 </span>
@@ -1568,7 +1587,7 @@ export default function HomePage() {
                   setAddMenuOpen(false);
                 }}
               >
-                Title card
+                Graphic
               </button>
             </Popover>
           </span>
@@ -1702,8 +1721,8 @@ export default function HomePage() {
             },
             {
               id: "new-title",
-              label: "New title card",
-              keywords: "add insert title card",
+              label: "New graphic",
+              keywords: "add insert title card graphic",
               run: () => { addTitleSection(null); toast.info("Added title"); },
             },
             {
@@ -2207,7 +2226,7 @@ function PreviewStage({
           <div className="stage-hud">
             <span className="stage-idx">{section.index.toString().padStart(2, "0")}</span>
             <span className="stage-title-text">{section.title}</span>
-            <span className="stage-type">{section.type.toUpperCase()}</span>
+            <span className="stage-type">{section.type === "title" ? "GRAPHIC" : "CLIP"}</span>
           </div>
 
           {/* Center play overlay when paused */}
@@ -3014,7 +3033,7 @@ function TitleStyleEditor({
   return (
     <div className="editor">
       <div className="editor-head">
-        <span>// TITLE STYLE</span>
+        <span>// GRAPHIC STYLE</span>
         <button type="button" className="btn ghost" onClick={onClose} aria-label="Close title style editor" title="Close">✕</button>
       </div>
       <LibrarySection
@@ -3802,14 +3821,14 @@ function TitleFlowBody({
   return (
     <div className="flow-body single">
       <div className="stage full">
-        <div className="stage-title"><span className="num">01</span><span className="stage-title-icon" aria-hidden>T</span>TITLE CARD</div>
+        <div className="stage-title"><span className="num">01</span><span className="stage-title-icon" aria-hidden>T</span>GRAPHIC</div>
         <Field label="Text">
           <textarea
             className="field-input tall"
             rows={3}
             value={titleVersion?.text ?? ""}
             disabled={!titleVersion}
-            placeholder={titleVersion ? "Title text" : "+ new version to start"}
+            placeholder={titleVersion ? "Graphic text" : "+ new version to start"}
             onChange={(e) => onChangeTitleVersion({ text: e.target.value })}
           />
         </Field>
@@ -4538,7 +4557,7 @@ function RenderDialog({ project, onClose }: { project: Project; onClose: () => v
     if (s.type === "title") {
       const v = s.versions.find((x) => x.id === s.active_version_id);
       const ready = v && v.kind === "title" && v.text.trim().length > 0;
-      return { id: s.id, label: s.title, ready, reason: ready ? "title text set" : "missing title text" };
+      return { id: s.id, label: s.title, ready, reason: ready ? "graphic text set" : "missing graphic text" };
     }
     const v = s.versions.find((x) => x.id === s.active_version_id);
     if (!v || v.kind !== "clip") {
@@ -4899,7 +4918,7 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
               <dd>Final-pass color: exposure, contrast, warmth, crushed blacks. Applied via FFmpeg LUT at render time and exportable as a .cube file for Premiere / Resolve.</dd>
               <dt><span className="slot-icon">♫</span> // MUSIC</dt>
               <dd>Score for the whole project. Generate via ElevenLabs or Stable Audio, or <span className="kbd">▤ IMPORT</span> your own mp3/wav. Auto-ducks under VO at −6dB.</dd>
-              <dt><span className="slot-icon">T</span> // TITLE STYLE</dt>
+              <dt><span className="slot-icon">T</span> // GRAPHIC STYLE</dt>
               <dd>Font, color, and background for any title-card section. Pick from JetBrains Mono / Inter / Knewave.</dd>
               <dt><span className="lib-tab-icon">⊞</span> // PROJECTS</dt>
               <dd>Your saved projects. <span className="kbd">{mod} S</span> saves the current state; click a saved row to load it (the current project is auto-saved first).</dd>
