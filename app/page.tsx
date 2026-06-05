@@ -533,6 +533,7 @@ export default function HomePage() {
   const [editingVOId, setEditingVOId] = useState<string | null>(null);
   const [musicPanelOpen, setMusicPanelOpen] = useState(false);
   const [lookOpen, setLookOpen] = useState<null | "brief" | "grade" | "title">(null);
+  const [libTab, setLibTab] = useState<"projects" | "templates">("projects");
   const [dragSectionId, setDragSectionId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; side: "before" | "after" } | null>(null);
   const [resizingSection, setResizingSection] = useState<{
@@ -1932,8 +1933,29 @@ export default function HomePage() {
       ) : null}
 
       <aside className="workspace-library">
-        <div className="lib-head"><span className="lib-tab-icon" aria-hidden>⊞</span> // LIBRARY</div>
+        <div className="lib-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={libTab === "projects"}
+            className={`lib-tab ${libTab === "projects" ? "active" : ""}`}
+            onClick={() => setLibTab("projects")}
+          >
+            <span className="lib-tab-icon" aria-hidden>⊞</span> // PROJECTS
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={libTab === "templates"}
+            className={`lib-tab ${libTab === "templates" ? "active" : ""}`}
+            onClick={() => setLibTab("templates")}
+          >
+            <span className="lib-tab-icon" aria-hidden>⚀</span> // TEMPLATES
+          </button>
+        </div>
         <div className="lib-body">
+          {libTab === "projects" ? (
+          <>
           <button
             type="button"
             className="lib-save"
@@ -1945,7 +1967,6 @@ export default function HomePage() {
           >
             <span className="lib-tab-icon" aria-hidden>⊞</span> Save current project
           </button>
-          <div className="lib-section-title"><span className="lib-section-icon" aria-hidden>●</span> // SAVED</div>
           {projectStubs.length === 0 ? (
             <div className="lib-empty">no saved projects yet</div>
           ) : (
@@ -1994,7 +2015,8 @@ export default function HomePage() {
               })}
             </div>
           )}
-          <div className="lib-section-title"><span className="lib-section-icon" aria-hidden>⚀</span> // TEMPLATES</div>
+          </>
+          ) : (
           <div className="lib-list">
             {TEMPLATES.slice(0, 5).map((t) => (
               <button
@@ -2026,6 +2048,7 @@ export default function HomePage() {
               </button>
             ))}
           </div>
+          )}
         </div>
       </aside>
 
@@ -2345,6 +2368,13 @@ function StageControls({
         ))}
       </div>
       <div className="stage-controls-row">
+        {project.sections[currentIndex] ? (
+          <div className="stage-section-pill">
+            <span className="stage-section-idx">{project.sections[currentIndex].index.toString().padStart(2, "0")}</span>
+            <span className="stage-section-title">{project.sections[currentIndex].title}</span>
+            <span className="stage-section-type">{project.sections[currentIndex].type === "title" ? "GRAPHIC" : "CLIP"}</span>
+          </div>
+        ) : null}
         <button type="button" className="stage-iconbtn" title="Previous" aria-label="Previous section" onClick={() => handleSeek(currentIndex - 1)}>⏮</button>
         <button
           type="button"
@@ -2505,12 +2535,6 @@ function PreviewStage({
               <span className="stage-empty-hint">click a section in the timeline · open its flow panel to generate</span>
             </div>
           )}
-
-          <div className="stage-hud">
-            <span className="stage-idx">{section.index.toString().padStart(2, "0")}</span>
-            <span className="stage-title-text">{section.title}</span>
-            <span className="stage-type">{section.type === "title" ? "GRAPHIC" : "CLIP"}</span>
-          </div>
 
           {activeOverlays.map((g) => (
             <div
