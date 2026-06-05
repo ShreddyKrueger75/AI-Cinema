@@ -2386,99 +2386,96 @@ function PreviewStage({
               <span className="stage-center-play-glyph">▶</span>
             </button>
           ) : null}
+        </div>
+      </div>
 
-          {/* Bottom overlay control bar */}
-          <div className="stage-chrome" onClick={(e) => e.stopPropagation()}>
-            <div className="stage-scrubber" role="presentation">
-              {project.sections.map((s, i) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className={`stage-scrub-seg ${i === currentIndex ? "active" : ""} ${i < currentIndex ? "past" : ""}`}
-                  style={{ flex: Math.max(0.1, s.duration_s) }}
-                  onClick={() => setActiveSection(s.id)}
-                  title={`Jump to ${s.index.toString().padStart(2, "0")} ${s.title} · ${formatTimecode(project.sections.slice(0, i).reduce((a, x) => a + x.duration_s, 0))}`}
-                  aria-label={`Jump to section ${s.index} ${s.title}`}
-                />
-              ))}
-            </div>
-            <div className="stage-chrome-row">
-              <div className="stage-chrome-left">
-                <button
-                  type="button"
-                  className="stage-iconbtn"
-                  title="Previous section"
-                  aria-label="Previous section"
-                  onClick={() => handleSeekToSection(currentIndex - 1)}
-                >
-                  ⏮
-                </button>
-                <button
-                  type="button"
-                  className="stage-iconbtn primary"
-                  title={isPlaying ? "Pause (Space)" : "Play (Space)"}
-                  aria-label={isPlaying ? "Pause preview" : "Play preview"}
-                  onClick={onTogglePlay}
-                >
-                  {isPlaying ? "❚❚" : "▶"}
-                </button>
-                <button
-                  type="button"
-                  className="stage-iconbtn"
-                  title="Next section"
-                  aria-label="Next section"
-                  onClick={() => handleSeekToSection(currentIndex + 1)}
-                >
-                  ⏭
-                </button>
-                {isPlaying ? (
-                  <button
-                    type="button"
-                    className="stage-iconbtn"
-                    title="Stop"
-                    aria-label="Stop preview"
-                    onClick={onStop}
-                  >
-                    ◼
-                  </button>
-                ) : null}
-                <span className="stage-chrome-time">
-                  {formatTimecode(startSeconds)}
-                  <span className="stage-divider">/</span>
-                  {formatTimecode(total)}
-                </span>
-              </div>
-              <div className="stage-chrome-right">
-                <button
-                  type="button"
-                  className="stage-iconbtn"
-                  title="Fullscreen"
-                  aria-label="Toggle fullscreen"
-                  onClick={(e) => {
-                    const canvas = (e.currentTarget.closest(".stage-canvas") as HTMLElement) ?? null;
-                    if (!canvas) return;
-                    if (document.fullscreenElement) {
-                      document.exitFullscreen().catch((err) => {
-                        toast.warn("Couldn't exit fullscreen", err?.message ?? String(err));
-                      });
-                      return;
-                    }
-                    const req = canvas.requestFullscreen?.bind(canvas);
-                    if (!req) {
-                      toast.warn("Fullscreen unsupported", "This browser doesn't expose requestFullscreen on the preview canvas.");
-                      return;
-                    }
-                    req().catch((err: unknown) => {
-                      const msg = err instanceof Error ? err.message : String(err);
-                      toast.warn("Fullscreen blocked", msg);
-                    });
-                  }}
-                >
-                  ⛶
-                </button>
-              </div>
-            </div>
-          </div>
+      {/* Control panel below the canvas */}
+      <div className="stage-controls" onClick={(e) => e.stopPropagation()}>
+        <div className="stage-scrubber" role="presentation">
+          {project.sections.map((s, i) => (
+            <button
+              key={s.id}
+              type="button"
+              className={`stage-scrub-seg ${i === currentIndex ? "active" : ""} ${i < currentIndex ? "past" : ""}`}
+              style={{ flex: Math.max(0.1, s.duration_s) }}
+              onClick={() => setActiveSection(s.id)}
+              title={`Jump to ${s.index.toString().padStart(2, "0")} ${s.title} · ${formatTimecode(project.sections.slice(0, i).reduce((a, x) => a + x.duration_s, 0))}`}
+              aria-label={`Jump to section ${s.index} ${s.title}`}
+            />
+          ))}
+        </div>
+        <div className="stage-controls-row">
+          <button
+            type="button"
+            className="stage-iconbtn"
+            title="Previous section"
+            aria-label="Previous section"
+            onClick={() => handleSeekToSection(currentIndex - 1)}
+          >
+            ⏮
+          </button>
+          <button
+            type="button"
+            className="stage-iconbtn primary"
+            title={isPlaying ? "Pause (Space)" : "Play (Space)"}
+            aria-label={isPlaying ? "Pause preview" : "Play preview"}
+            onClick={onTogglePlay}
+          >
+            {isPlaying ? "❚❚" : "▶"}
+          </button>
+          <button
+            type="button"
+            className="stage-iconbtn"
+            title="Next section"
+            aria-label="Next section"
+            onClick={() => handleSeekToSection(currentIndex + 1)}
+          >
+            ⏭
+          </button>
+          {isPlaying ? (
+            <button
+              type="button"
+              className="stage-iconbtn"
+              title="Stop"
+              aria-label="Stop preview"
+              onClick={onStop}
+            >
+              ◼
+            </button>
+          ) : null}
+          <span className="stage-controls-time">
+            {formatTimecode(startSeconds)}
+            <span className="stage-divider">/</span>
+            {formatTimecode(total)}
+          </span>
+          <div className="stage-controls-spacer" />
+          <button
+            type="button"
+            className="stage-iconbtn"
+            title="Fullscreen"
+            aria-label="Toggle fullscreen"
+            onClick={() => {
+              const canvas = document.querySelector(".stage-canvas") as HTMLElement | null;
+              if (!canvas) return;
+              if (document.fullscreenElement) {
+                document.exitFullscreen().catch((err) => {
+                  toast.warn("Couldn't exit fullscreen", err?.message ?? String(err));
+                });
+                return;
+              }
+              const req = canvas.requestFullscreen?.bind(canvas);
+              if (!req) {
+                toast.warn("Fullscreen unsupported", "This browser doesn't expose requestFullscreen on the preview canvas.");
+                return;
+              }
+              req().catch((err: unknown) => {
+                const msg = err instanceof Error ? err.message : String(err);
+                toast.warn("Fullscreen blocked", msg);
+              });
+            }}
+          >
+            ⛶
+          </button>
         </div>
       </div>
 
