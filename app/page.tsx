@@ -1374,6 +1374,9 @@ export default function HomePage() {
         >
           {project.sections.map((section) => {
             const isTitle = section.type === "title";
+            if (isTitle) {
+              return <div key={section.id} className="title-placeholder" aria-hidden />;
+            }
             const isActive = section.id === activeSectionId;
             const isPreviewing = section.id === previewSectionId;
             const versionIdx = section.versions.findIndex((v) => v.id === section.active_version_id);
@@ -4585,26 +4588,28 @@ function ClipFlowBody({
               <span className="caret">▾</span>
             </div>
           </Field>
-          <Field label="Input">
-            <div className="field-pill">
-              <select
-                value={activeStill?.input_ref ?? ""}
-                disabled={!activeStill}
-                onChange={(e) =>
-                  activeStill &&
-                  onUpdateStill(activeStill.id, { input_ref: e.target.value || null })
-                }
-              >
-                <option value="">none</option>
-                {priorClipSections.map((s) => (
-                  <option key={s.id} value={`section:${s.id}:last_frame`}>
-                    {s.index.toString().padStart(2, "0")} last frame
-                  </option>
-                ))}
-              </select>
-              <span className="caret">▾</span>
-            </div>
-          </Field>
+          {priorClipSections.length > 0 ? (
+            <Field label="Input">
+              <div className="field-pill">
+                <select
+                  value={activeStill?.input_ref ?? ""}
+                  disabled={!activeStill}
+                  onChange={(e) =>
+                    activeStill &&
+                    onUpdateStill(activeStill.id, { input_ref: e.target.value || null })
+                  }
+                >
+                  <option value="">none</option>
+                  {priorClipSections.map((s) => (
+                    <option key={s.id} value={`section:${s.id}:last_frame`}>
+                      {s.index.toString().padStart(2, "0")} last frame
+                    </option>
+                  ))}
+                </select>
+                <span className="caret">▾</span>
+              </div>
+            </Field>
+          ) : null}
           <Field label="Cost">
             <div className="field-pill cost">{formatCost(stillCost)}</div>
           </Field>
