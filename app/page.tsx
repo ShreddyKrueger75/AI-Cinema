@@ -1205,14 +1205,6 @@ export default function HomePage() {
           />
         </LookSlot>
         </div>
-        <StageControls
-          project={project}
-          currentIndex={currentPreviewIndex}
-          startSeconds={previewStartSeconds}
-          isPlaying={playPosition !== null}
-          onTogglePlay={togglePreview}
-          onStop={stopPreview}
-        />
       </div>
 
       <PreviewStage
@@ -1221,6 +1213,15 @@ export default function HomePage() {
         startSeconds={previewStartSeconds}
         isPlaying={playPosition !== null}
         onTogglePlay={togglePreview}
+      />
+
+      <StageControls
+        project={project}
+        currentIndex={currentPreviewIndex}
+        startSeconds={previewStartSeconds}
+        isPlaying={playPosition !== null}
+        onTogglePlay={togglePreview}
+        onStop={stopPreview}
       />
 
       <div className="timeline-wrap">
