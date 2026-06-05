@@ -6,6 +6,10 @@ export function aspectDims(aspect: Aspect): { w: number; h: number } {
   return { w: 576, h: 1024 };
 }
 
+// When a token is provided, return a same-origin proxy URL — the token
+// is sent in an x-provider-key header by the caller, never in the URL
+// (URLs leak via access logs, browser history, and Referer headers).
+// Without a token, hit pollinations.ai direct (it ships CORS headers).
 export function pollinationsUrl(
   prompt: string,
   aspect: Aspect,
@@ -23,9 +27,10 @@ export function pollinationsUrl(
     nologo: "true",
     model: "flux",
   });
-  const t = token?.trim();
-  if (t) params.set("token", t);
-  return `https://image.pollinations.ai/prompt/${safe}?${params.toString()}`;
+  const base = token?.trim()
+    ? "/api/proxy/pollinations"
+    : "https://image.pollinations.ai";
+  return `${base}/prompt/${safe}?${params.toString()}`;
 }
 
 export type KenBurnsDirection = "in" | "out" | "left" | "right";
