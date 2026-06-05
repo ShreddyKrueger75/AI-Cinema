@@ -973,6 +973,25 @@ button {
   gap: 4px;
   align-items: center;
 }
+.tl-row-import-btn {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-fg-muted);
+  background: transparent;
+  border: 1px solid var(--color-line-strong);
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: color .12s, border-color .12s, background .12s;
+}
+.tl-row-import-btn:hover,
+.tl-row-import-btn:focus-visible {
+  color: var(--color-fg);
+  border-color: var(--color-fg-muted);
+  background: var(--color-elev);
+  outline: none;
+}
 .tl-row-add-btn {
   font-family: var(--font-mono);
   font-size: 9px;
@@ -1293,22 +1312,28 @@ button.clip-version:hover { border-color: var(--color-blood-faint); }
 
 .trans-marker {
   position: absolute;
-  top: 50%;
+  top: -18px;
   left: 0;
-  transform: translate(-50%, -50%);
-  width: 32px;
-  height: 32px;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 36px;
   background: var(--color-bg);
-  border: 2px solid var(--color-line-strong);
+  border: 2px solid var(--color-blood-faint);
   display: grid;
   place-items: center;
-  font-size: 13px;
-  color: var(--color-fg-muted);
-  z-index: 3;
+  font-size: 14px;
+  color: var(--color-blood);
+  z-index: 10;
   cursor: pointer;
+  border-radius: 50%;
 }
-.trans-marker:hover { border-color: var(--color-blood); color: var(--color-blood); background: var(--color-blood-soft); }
-.trans-marker[data-type="fade"] { color: var(--color-blood-faint); border-color: var(--color-blood-faint); }
+.trans-marker:hover {
+  border-color: var(--color-blood);
+  color: var(--color-blood);
+  background: var(--color-blood-soft);
+  transform: translateX(-50%) scale(1.1);
+}
+.trans-marker[data-type="fade"] { color: var(--color-blood-faint); }
 
 /* AUDIO TRACKS */
 .audio-row { display: grid; grid-template-columns: repeat(6, 1fr); position: relative; }

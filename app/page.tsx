@@ -14,6 +14,7 @@ import type {
   Aspect,
   GraphicOverlay,
   Grade,
+  MusicSegment,
   Project,
   Section,
   Transition,
@@ -383,6 +384,9 @@ export default function HomePage() {
   const addVOSegment = useStore((s) => s.addVOSegment);
   const updateVOSegment = useStore((s) => s.updateVOSegment);
   const removeVOSegment = useStore((s) => s.removeVOSegment);
+  const addMusicSegment = useStore((s) => s.addMusicSegment);
+  const updateMusicSegment = useStore((s) => s.updateMusicSegment);
+  const removeMusicSegment = useStore((s) => s.removeMusicSegment);
   const addGraphic = useStore((s) => s.addGraphic);
   const updateGraphic = useStore((s) => s.updateGraphic);
   const removeGraphic = useStore((s) => s.removeGraphic);
@@ -531,6 +535,7 @@ export default function HomePage() {
   const [editingTransitionId, setEditingTransitionId] = useState<string | null>(null);
   const [editingGraphicId, setEditingGraphicId] = useState<string | null>(null);
   const [editingVOId, setEditingVOId] = useState<string | null>(null);
+  const [editingMusicId, setEditingMusicId] = useState<string | null>(null);
   const [musicPanelOpen, setMusicPanelOpen] = useState(false);
   const [lookOpen, setLookOpen] = useState<null | "brief" | "grade" | "title">(null);
   const [libTab, setLibTab] = useState<"projects" | "templates">("projects");
@@ -1267,6 +1272,23 @@ export default function HomePage() {
           <div className="tl-row-actions">
             <button
               type="button"
+              className="tl-row-import-btn"
+              title="Import a text file — its content becomes a graphic overlay"
+              aria-label="Import graphic"
+              onClick={async () => {
+                const file = await pickFile(".txt,text/plain");
+                if (!file) return;
+                const text = await file.text();
+                addGraphic(activeSectionStartS);
+                const last = (useStore.getState().project.graphics ?? []).slice(-1)[0];
+                if (last) updateGraphic(last.id, { text: text.trim().slice(0, 200) });
+                toast.success("Graphic imported", file.name);
+              }}
+            >
+              ▤ IMPORT
+            </button>
+            <button
+              type="button"
               className="tl-row-add-btn"
               onClick={() => addGraphic(activeSectionStartS)}
               title="Add a graphic overlay"
@@ -1676,6 +1698,28 @@ export default function HomePage() {
           <div className="tl-row-actions">
             <button
               type="button"
+              className="tl-row-import-btn"
+              title="Import an audio file as a new VO segment"
+              aria-label="Import voiceover file"
+              onClick={async () => {
+                const file = await pickFile("audio/*");
+                if (!file) return;
+                const url = URL.createObjectURL(file);
+                const measured = await measureAudioDuration(url).catch(() => null);
+                addVOSegment();
+                const last = useStore.getState().project.vo_segments.slice(-1)[0];
+                if (last) {
+                  const patch: Partial<Omit<VOSegment, "id">> = { output_url: url, text: file.name.replace(/\.[^.]+$/, "") };
+                  if (measured && Number.isFinite(measured) && measured > 0) patch.duration_s = measured;
+                  updateVOSegment(last.id, patch);
+                }
+                toast.success("VO imported", file.name);
+              }}
+            >
+              ▤ IMPORT
+            </button>
+            <button
+              type="button"
               className="tl-row-add-btn"
               onClick={() => addVOSegment()}
               title="Add a voiceover segment"
@@ -1699,55 +1743,44 @@ export default function HomePage() {
           <div className="tl-row-actions">
             <button
               type="button"
-              className="tl-row-add-btn"
-              onClick={() => setMusicPanelOpen(true)}
-              title="Open music editor"
-            >
-              + MUSIC
-            </button>
-          </div>
-        </div>
-        <div className="audio-row">
-          <div className={`music-bed ${project.music_track?.output_url ? "voiced" : ""}`}>
-            <button
-              type="button"
-              className="music-bed-main"
-              onClick={() => setMusicPanelOpen(true)}
-            >
-              <span>
-                <strong>{project.music_track?.name ?? "—"}</strong> ·{" "}
-                {project.music_track?.model ?? "—"} · v1 · {project.duration_s.toFixed(1)}s · auto-ducks under VO −6dB
-              </span>
-              <span>{project.music_track?.output_url ? "♪ ✓" : "♪"} ▾</span>
-            </button>
-            <button
-              type="button"
-              className="track-import"
-              title="Import your own music file (mp3, wav, m4a)"
+              className="tl-row-import-btn"
+              title="Import an audio file as a new music segment"
               aria-label="Import music file"
               onClick={async () => {
                 const file = await pickFile("audio/*");
                 if (!file) return;
                 const url = URL.createObjectURL(file);
-                updateMusic({ output_url: url, name: file.name.replace(/\.[^.]+$/, "") });
+                const measured = await measureAudioDuration(url).catch(() => null);
+                addMusicSegment();
+                const last = (useStore.getState().project.music_segments ?? []).slice(-1)[0];
+                if (last) {
+                  const patch: Partial<Omit<MusicSegment, "id">> = { output_url: url, name: file.name.replace(/\.[^.]+$/, "") };
+                  if (measured && Number.isFinite(measured) && measured > 0) patch.duration_s = measured;
+                  updateMusicSegment(last.id, patch);
+                }
                 toast.success("Music imported", file.name);
               }}
             >
               ▤ IMPORT
             </button>
-            {project.music_track?.output_url ? (
-              <>
-                <Waveform
-                  url={project.music_track.output_url}
-                  samples={240}
-                  height={26}
-                  color="var(--color-blood)"
-                  className="music-bed-wave"
-                />
-                <audio src={project.music_track.output_url} controls className="music-bed-audio" />
-              </>
-            ) : null}
+            <button
+              type="button"
+              className="tl-row-add-btn"
+              onClick={() => addMusicSegment()}
+              title="Add a music segment"
+            >
+              + MUSIC
+            </button>
           </div>
+        </div>
+        <div className="audio-row vo-row">
+          <MusicTrack
+            segments={project.music_segments ?? []}
+            duration={project.duration_s}
+            editingMusicId={editingMusicId}
+            setEditingMusicId={setEditingMusicId}
+            updateMusicSegment={updateMusicSegment}
+          />
         </div>
 
         <div className="audio-row" style={{ marginTop: 12 }}>
@@ -2043,7 +2076,7 @@ export default function HomePage() {
         <span className="footstrip-mid">
           {project.sections.length} SECTIONS · {project.vo_segments.length} VO · {projectStubs.length} SAVED · SPENT {formatCost(sessionSpent)}
         </span>
-        <span>BLOODY FINGERS SOFTWARE — 2026</span>
+        <span>BLOODY FINGER SOFTWARE — 2026</span>
       </div>
       </div>
 
@@ -2277,6 +2310,156 @@ function VOTrack({
             >
               <span className="vo-seg-head">
                 v{i + 1} {seg.output_url ? "♪ " : ""}— <span className="vo-text">&ldquo;{seg.text}&rdquo;</span>
+              </span>
+              {seg.output_url ? (
+                <Waveform
+                  url={seg.output_url}
+                  samples={64}
+                  height={18}
+                  color="var(--color-blood)"
+                  className="vo-seg-wave"
+                />
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className="vo-seg-resize right"
+              title="Drag to change duration"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setDrag({
+                  id: seg.id,
+                  mode: "resize-r",
+                  startX: e.clientX,
+                  orig: { start: seg.start_s, dur: seg.duration_s },
+                });
+              }}
+            >
+              ▶
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MusicTrack({
+  segments,
+  duration,
+  editingMusicId,
+  setEditingMusicId,
+  updateMusicSegment,
+}: {
+  segments: MusicSegment[];
+  duration: number;
+  editingMusicId: string | null;
+  setEditingMusicId: (id: string | null) => void;
+  updateMusicSegment: (id: string, patch: Partial<Omit<MusicSegment, "id">>) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const [drag, setDrag] = useState<
+    | { id: string; mode: "move" | "resize-l" | "resize-r"; startX: number; orig: { start: number; dur: number } }
+    | null
+  >(null);
+
+  useEffect(() => {
+    if (!drag) return;
+    const local = drag;
+    function onMove(e: PointerEvent) {
+      const el = trackRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const dxPx = e.clientX - local.startX;
+      const dxSec = (dxPx / rect.width) * duration;
+      const snap = (v: number) => Math.round(v * 2) / 2;
+      if (local.mode === "move") {
+        let nextStart = snap(local.orig.start + dxSec);
+        nextStart = Math.max(0, Math.min(duration - local.orig.dur, nextStart));
+        updateMusicSegment(local.id, { start_s: nextStart });
+      } else if (local.mode === "resize-l") {
+        let nextStart = snap(local.orig.start + dxSec);
+        const minLen = 0.5;
+        const maxStart = local.orig.start + local.orig.dur - minLen;
+        nextStart = Math.max(0, Math.min(maxStart, nextStart));
+        const nextDur = local.orig.start + local.orig.dur - nextStart;
+        updateMusicSegment(local.id, { start_s: nextStart, duration_s: nextDur });
+      } else if (local.mode === "resize-r") {
+        let nextDur = snap(local.orig.dur + dxSec);
+        nextDur = Math.max(0.5, Math.min(duration - local.orig.start, nextDur));
+        updateMusicSegment(local.id, { duration_s: nextDur });
+      }
+    }
+    function onUp() {
+      setDrag(null);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [drag, duration, updateMusicSegment]);
+
+  return (
+    <div className="vo-track music-track" ref={trackRef}>
+      {Array.from({ length: Math.max(0, Math.ceil(duration / 3)) + 1 }, (_, i) => (
+        <div
+          key={i}
+          className="vo-tick"
+          style={{ left: `${Math.min(100, (i * 3 / duration) * 100)}%` }}
+        />
+      ))}
+      {segments.map((seg, i) => {
+        const left = (seg.start_s / duration) * 100;
+        const width = (seg.duration_s / duration) * 100;
+        const isDragging = drag?.id === seg.id;
+        return (
+          <div
+            key={seg.id}
+            className={`vo-seg music-seg ${seg.output_url ? "voiced" : ""}${isDragging ? " dragging" : ""}`}
+            style={{ left: `${left}%`, width: `${width}%` }}
+          >
+            <button
+              type="button"
+              className="vo-seg-resize left"
+              title="Drag to change start"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                (e.target as Element).releasePointerCapture?.(e.pointerId);
+                setDrag({
+                  id: seg.id,
+                  mode: "resize-l",
+                  startX: e.clientX,
+                  orig: { start: seg.start_s, dur: seg.duration_s },
+                });
+              }}
+            >
+              ◀
+            </button>
+            <div
+              className="vo-seg-body"
+              onPointerDown={(e) => {
+                if ((e.target as HTMLElement).closest("button")) return;
+                e.preventDefault();
+                setDrag({
+                  id: seg.id,
+                  mode: "move",
+                  startX: e.clientX,
+                  orig: { start: seg.start_s, dur: seg.duration_s },
+                });
+              }}
+              onClick={(e) => {
+                if (isDragging) return;
+                if ((e.target as HTMLElement).closest("button")) return;
+                setEditingMusicId(editingMusicId === seg.id ? null : seg.id);
+              }}
+              title={`${seg.start_s.toFixed(1)}s · ${seg.duration_s.toFixed(1)}s`}
+            >
+              <span className="vo-seg-head">
+                m{i + 1} {seg.output_url ? "♪ " : ""}— <span className="vo-text">{seg.name || seg.prompt}</span>
               </span>
               {seg.output_url ? (
                 <Waveform
