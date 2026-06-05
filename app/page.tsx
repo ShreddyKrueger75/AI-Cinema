@@ -5143,7 +5143,7 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
               <dt>ElevenLabs <span className="help-tag">KEY</span></dt>
               <dd>Voice generation for VO and music score generation.</dd>
             </dl>
-            <p className="help-note">Keys live in your browser&apos;s localStorage. Nothing is proxied through any AI Cinema server (Runway aside, for CORS reasons). The app itself is completely free.</p>
+            <p className="help-note">Keys live in your browser&apos;s localStorage. ElevenLabs and Pollinations are called direct. Replicate and Runway block browser CORS, so their requests are relayed through our server — the key transits per request and is never stored or logged. The app itself is completely free.</p>
           </div>
 
           <div className="modal-section">
@@ -5221,8 +5221,10 @@ function ProvidersDialog({
 
         <div className="modal-body">
           <div className="providers-notice">
-            <strong>Zero-server stance.</strong> Your keys live in this browser&apos;s localStorage and
-            are never sent to any AI Cinema server. Export does not include keys.
+            <strong>Keys live in your browser&apos;s localStorage.</strong> Export does not include them.
+            ElevenLabs and Pollinations are called <em>direct</em> from the browser. <strong>Replicate</strong>
+            and <strong>Runway</strong> block cross-origin browser calls, so requests are <em>relayed</em>
+            through our server — the key transits in memory per request and is never stored or logged.
           </div>
 
           <div className="providers-list">
@@ -5240,6 +5242,7 @@ function ProvidersDialog({
                   keyPrefix={p.key_prefix}
                   storedKey={stored}
                   connected={connected}
+                  relayed={p.relayed}
                   onSetKey={(k) => onSetKey(p.id, k)}
                   onRemoveKey={() => onRemoveKey(p.id)}
                 />
@@ -5303,6 +5306,7 @@ function ProviderRow({
   keyPrefix,
   storedKey,
   connected,
+  relayed,
   onSetKey,
   onRemoveKey,
 }: {
@@ -5314,6 +5318,7 @@ function ProviderRow({
   keyPrefix?: string;
   storedKey: string;
   connected: boolean;
+  relayed?: boolean;
   onSetKey: (key: string) => void;
   onRemoveKey: () => void;
 }) {
@@ -5341,6 +5346,9 @@ function ProviderRow({
           <span className={`prov-dot ${connected ? "" : "warn"}`} />
           <span className="prov-name">{name}</span>
           <span className="prov-tag">{providerId}</span>
+          {relayed ? (
+            <span className="prov-relay" title="Calls are relayed through our server because this provider blocks browser CORS. Key transits in memory per request and is never stored.">RELAYED</span>
+          ) : null}
         </div>
         <div className="provider-surfaces">
           {surfaces.map((s) => (

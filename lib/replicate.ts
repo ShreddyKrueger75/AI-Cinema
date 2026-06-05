@@ -1,6 +1,9 @@
 import type { Aspect } from "./types";
 
-const BASE = "https://api.replicate.com/v1";
+// Browser calls go through our server-side proxy because api.replicate.com
+// does not send CORS headers. The user's key is sent in x-provider-key
+// per request and is never stored on the server.
+const BASE = "/api/proxy/replicate/v1";
 
 type PredictionStatus =
   | "starting"
@@ -53,7 +56,7 @@ async function poll(
   while (true) {
     if (signal?.aborted) throw new DOMException("aborted", "AbortError");
     const r = await fetchJSON(`${BASE}/predictions/${id}`, {
-      headers: { Authorization: `Bearer ${apiToken}` },
+      headers: { "x-provider-key": apiToken },
       signal,
     });
     const p = (await r.json()) as Prediction;
@@ -223,7 +226,7 @@ export async function runReplicateMotion(opts: RunMotionOpts): Promise<string> {
   const r = await fetchJSON(`${BASE}/models/${slug}/predictions`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${opts.apiToken}`,
+      "x-provider-key": opts.apiToken,
       "Content-Type": "application/json",
       Prefer: "wait=30",
     },
@@ -274,7 +277,7 @@ export async function runReplicateMusic(opts: RunMusicReplicateOpts): Promise<st
   const r = await fetchJSON(`${BASE}/models/${slug}/predictions`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${opts.apiToken}`,
+      "x-provider-key": opts.apiToken,
       "Content-Type": "application/json",
       Prefer: "wait=30",
     },
@@ -317,7 +320,7 @@ export async function runReplicateImage(opts: RunImageOpts): Promise<string> {
   const r = await fetchJSON(`${BASE}/models/${slug}/predictions`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${opts.apiToken}`,
+      "x-provider-key": opts.apiToken,
       "Content-Type": "application/json",
       Prefer: "wait=30",
     },

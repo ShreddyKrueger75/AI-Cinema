@@ -2325,6 +2325,16 @@ button.ref-hint::after {
   text-transform: uppercase;
   color: var(--color-fg-faint);
 }
+.prov-relay {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-warn);
+  border: 1px solid var(--color-warn);
+  padding: 1px 6px;
+  margin-left: 6px;
+  cursor: help;
+}
 .provider-surfaces { display: flex; gap: 4px; }
 .surface-tag {
   font-size: 9px;
