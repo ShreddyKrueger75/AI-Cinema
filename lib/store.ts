@@ -6,6 +6,7 @@ import type {
   Aspect,
   Brief,
   ClipVersion,
+  GraphicOverlay,
   Grade,
   MusicTrack,
   Project,
@@ -74,6 +75,10 @@ export type StoreState = {
   addVOSegment: () => void;
   updateVOSegment: (id: string, patch: Partial<Omit<VOSegment, "id">>) => void;
   removeVOSegment: (id: string) => void;
+
+  addGraphic: (atSeconds?: number) => void;
+  updateGraphic: (id: string, patch: Partial<Omit<GraphicOverlay, "id">>) => void;
+  removeGraphic: (id: string) => void;
 };
 
 const STORAGE_KEY = "ai-cinema:project:v1";
@@ -605,6 +610,50 @@ export const useStore = create<StoreState>()(
           project: touch({
             ...state.project,
             vo_segments: state.project.vo_segments.filter((v) => v.id !== id),
+          }),
+        })),
+
+      addGraphic: (atSeconds) =>
+        set((state) => {
+          const total = state.project.duration_s;
+          const start_s = Math.max(
+            0,
+            Math.min(total - 0.5, atSeconds ?? 0),
+          );
+          const duration_s = Math.min(2, Math.max(0.5, total - start_s));
+          const existing = state.project.graphics ?? [];
+          const overlay: GraphicOverlay = {
+            id: newId("graphic"),
+            label: `Graphic ${existing.length + 1}`,
+            text: "TITLE",
+            start_s,
+            duration_s,
+            style_ref: null,
+            position: "center",
+          };
+          return {
+            project: touch({
+              ...state.project,
+              graphics: [...existing, overlay],
+            }),
+          };
+        }),
+
+      updateGraphic: (id, patch) =>
+        set((state) => ({
+          project: touch({
+            ...state.project,
+            graphics: (state.project.graphics ?? []).map((g) =>
+              g.id === id ? { ...g, ...patch } : g,
+            ),
+          }),
+        })),
+
+      removeGraphic: (id) =>
+        set((state) => ({
+          project: touch({
+            ...state.project,
+            graphics: (state.project.graphics ?? []).filter((g) => g.id !== id),
           }),
         })),
     }),

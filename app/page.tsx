@@ -12,6 +12,7 @@ import {
 import { selectActiveSection, useStore } from "@/lib/store";
 import type {
   Aspect,
+  GraphicOverlay,
   Grade,
   Project,
   Section,
@@ -297,6 +298,35 @@ function Waveform({
   );
 }
 
+function pickFile(accept: string): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.onchange = () => resolve(input.files?.[0] ?? null);
+    input.click();
+  });
+}
+
+function projectHasGeneratedContent(project: Project): boolean {
+  return project.sections.some(
+    (s) =>
+      s.stills.some((st) => !!st.output_url) ||
+      s.versions.some((v) => v.kind === "clip" && !!v.output_url),
+  );
+}
+
+function templateIcon(id: string): string {
+  switch (id) {
+    case "tpl_blank": return "◯";
+    case "tpl_product_reveal": return "◉";
+    case "tpl_title_card": return "T";
+    case "tpl_tutorial_3shot": return "⌗";
+    case "tpl_dark_drop": return "◖";
+    default: return "▪";
+  }
+}
+
 /* ───────────── PAGE ───────────── */
 
 export default function HomePage() {
@@ -318,10 +348,15 @@ export default function HomePage() {
   const addVOSegment = useStore((s) => s.addVOSegment);
   const updateVOSegment = useStore((s) => s.updateVOSegment);
   const removeVOSegment = useStore((s) => s.removeVOSegment);
+  const addGraphic = useStore((s) => s.addGraphic);
+  const updateGraphic = useStore((s) => s.updateGraphic);
+  const removeGraphic = useStore((s) => s.removeGraphic);
   const updateBrief = useStore((s) => s.updateBrief);
   const updateGrade = useStore((s) => s.updateGrade);
   const updateMusic = useStore((s) => s.updateMusic);
   const updateTitleStyle = useStore((s) => s.updateTitleStyle);
+  const updateStill = useStore((s) => s.updateStill);
+  const updateClipVersion = useStore((s) => s.updateClipVersion);
 
   const providerKeys = useProviderKeys((s) => s.keys);
   const setProviderKey = useProviderKeys((s) => s.setKey);
@@ -404,9 +439,9 @@ export default function HomePage() {
     () => projectOrder.map((id) => savedProjectsMap[id]).filter(Boolean),
     [projectOrder, savedProjectsMap],
   );
-  const savedSnapshot = savedProjectsMap[project.id];
-  const isDirty = !savedSnapshot || savedSnapshot.updated_at !== project.updated_at;
-  const isInLibrary = !!savedSnapshot;
+  const savedRecord = savedProjectsMap[project.id];
+  const isDirty = !savedRecord || savedRecord.updated_at !== project.updated_at;
+  const isInLibrary = !!savedRecord;
 
   const configuredKeyCountEarly = Object.values(providerKeys).filter((v) => v && v.trim()).length;
 
@@ -458,6 +493,7 @@ export default function HomePage() {
   const [insertAfterId, setInsertAfterId] = useState<string | null>(null);
   const [timelineVersionMenuId, setTimelineVersionMenuId] = useState<string | null>(null);
   const [editingTransitionId, setEditingTransitionId] = useState<string | null>(null);
+  const [editingGraphicId, setEditingGraphicId] = useState<string | null>(null);
   const [editingVOId, setEditingVOId] = useState<string | null>(null);
   const [lookOpen, setLookOpen] = useState<null | "brief" | "grade" | "music" | "title">(null);
   const [dragSectionId, setDragSectionId] = useState<string | null>(null);
@@ -489,8 +525,6 @@ export default function HomePage() {
   }, [resizingSection]);
   const [renderOpen, setRenderOpen] = useState(false);
   const [providersOpen, setProvidersOpen] = useState(false);
-  const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [projectsOpen, setProjectsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [playPosition, setPlayPosition] = useState<number | null>(null);
@@ -498,6 +532,29 @@ export default function HomePage() {
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playRAFRef = useRef<number | null>(null);
   const playStartedAtRef = useRef<number>(0);
+
+  const [dragGraphicState, setDragGraphicState] = useState<{
+    id: string;
+    rowLeft: number;
+    rowWidth: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!dragGraphicState) return;
+    const local = dragGraphicState;
+    function onMove(e: PointerEvent) {
+      const pct = Math.max(0, Math.min(1, (e.clientX - local.rowLeft) / local.rowWidth));
+      const newStart = Math.max(0, pct * useStore.getState().project.duration_s - 0.25);
+      useStore.getState().updateGraphic(local.id, { start_s: parseFloat(newStart.toFixed(2)) });
+    }
+    function onUp() { setDragGraphicState(null); }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [dragGraphicState]);
 
   const stopPreview = useCallback(() => {
     if (playTimerRef.current) clearTimeout(playTimerRef.current);
@@ -648,6 +705,23 @@ export default function HomePage() {
   const previewSectionId =
     playPosition !== null ? project.sections[playPosition]?.id ?? null : null;
 
+  const currentPreviewIndex = useMemo(() => {
+    if (playPosition !== null) return playPosition;
+    const i = project.sections.findIndex((s) => s.id === activeSectionId);
+    return i >= 0 ? i : 0;
+  }, [playPosition, activeSectionId, project.sections]);
+
+  const previewStartSeconds = useMemo(
+    () => project.sections.slice(0, currentPreviewIndex).reduce((acc, s) => acc + s.duration_s, 0),
+    [project.sections, currentPreviewIndex],
+  );
+
+  const activeSectionStartS = useMemo(() => {
+    const idx = project.sections.findIndex((s) => s.id === activeSectionId);
+    if (idx < 0) return playheadSeconds;
+    return project.sections.slice(0, idx).reduce((a, s) => a + s.duration_s, 0);
+  }, [project.sections, activeSectionId, playheadSeconds]);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
@@ -680,13 +754,8 @@ export default function HomePage() {
         setPaletteOpen((o) => !o);
         return;
       }
-      if (editable) return;
-
-      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
-        e.preventDefault();
-        setHelpOpen((o) => !o);
-        return;
-      }
+      // Esc dismisses dialogs regardless of focus — including inputs inside
+      // the section editor modal, which previously bailed on the editable check.
       if (e.key === "Escape") {
         if (useConfirm.getState().prompt) { useConfirm.getState().cancel(); return; }
         if (paletteOpen) { setPaletteOpen(false); return; }
@@ -694,7 +763,18 @@ export default function HomePage() {
         if (renderOpen) { setRenderOpen(false); return; }
         if (providersOpen) { setProvidersOpen(false); return; }
         if (lookOpen) { setLookOpen(null); return; }
-        if (activeSectionId) { setActiveSection(null); return; }
+        if (activeSectionId) {
+          if (editable) (e.target as HTMLElement)?.blur?.();
+          setActiveSection(null);
+          return;
+        }
+        return;
+      }
+      if (editable) return;
+
+      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
+        e.preventDefault();
+        setHelpOpen((o) => !o);
         return;
       }
       if (e.key === " " || e.code === "Space") {
@@ -775,6 +855,25 @@ export default function HomePage() {
     toast.success(".cube LUT exported", `${project.grade.name} · 17³ entries`);
   }, [project.grade]);
 
+  const requestAspectChange = useCallback(
+    (next: Aspect) => {
+      if (next === project.aspect) return;
+      if (!projectHasGeneratedContent(project)) {
+        updateProjectMeta({ aspect: next });
+        return;
+      }
+      confirmAsk({
+        title: `Switch aspect to ${next}?`,
+        message: `Your existing stills and clips were generated at ${project.aspect}. They'll stay on the timeline but won't match the new aspect — re-generating them at ${next} will use your provider API credits (Replicate, Runway, etc.) one clip at a time. AI Cinema itself stays free.`,
+        confirm_label: `Switch to ${next}`,
+        cancel_label: "Keep current",
+        destructive: false,
+        onConfirm: () => updateProjectMeta({ aspect: next }),
+      });
+    },
+    [project, updateProjectMeta],
+  );
+
   const transitionsByTo = useMemo(() => {
     const m = new Map<string, Transition>();
     for (const t of project.transitions) m.set(t.to_section_id, t);
@@ -786,12 +885,7 @@ export default function HomePage() {
   const tlGridCols = project.sections.length > 0
     ? project.sections.map((s) => `${Math.max(0.1, s.duration_s)}fr`).join(" ")
     : "1fr";
-  const clipThumbStyle: React.CSSProperties =
-    project.aspect === "16:9"
-      ? { aspectRatio: "16 / 9", height: "auto", maxHeight: 140 }
-      : project.aspect === "1:1"
-        ? { aspectRatio: "1 / 1", height: "auto", maxHeight: 180 }
-        : { aspectRatio: "9 / 16", height: "auto", maxHeight: 220 };
+  const aspectClass = `aspect-${project.aspect.replace(":", "-")}`;
 
   const handleExport = () => {
     downloadProjectJSON(project);
@@ -828,16 +922,40 @@ export default function HomePage() {
           </button>
         </div>
         <div className="right">
+          <button
+            type="button"
+            className="status-link"
+            onClick={() => setProvidersOpen(true)}
+            title="Manage provider API keys"
+            aria-label="Open Providers"
+          >
+            🔑 KEYS{configuredKeyCount > 0 ? ` (${configuredKeyCount})` : ""}
+          </button>
+          <button
+            type="button"
+            className="status-link"
+            onClick={() => setHelpOpen(true)}
+            title="Help & keyboard shortcuts"
+            aria-label="Open help"
+          >
+            ?
+          </button>
           <span>{hydrated ? "STATE // PERSISTED" : "STATE // EPHEMERAL"}</span>
           <UserStatusChip />
         </div>
       </div>
 
-      <div className="wordmark">
-        <span className="painted">AI Cinema</span>
-        <span className="lockup">by Bloody Finger</span>
+      <div className="hero">
+        <span className="hero-brand">Cinema <span className="ai">AI</span></span>
+        <a
+          className="cta-hero"
+          href="/signup"
+          title="Create a free account to save projects across devices"
+          aria-label="Sign up for a free account"
+        >
+          Let&apos;s Go! <span className="cta-hero-sub">— it&apos;s free</span>
+        </a>
       </div>
-      <div className="tagline">Cinematic video, made easy. Bring your own model.</div>
 
       {showWelcome ? (
         <div className="welcome-banner">
@@ -864,16 +982,6 @@ export default function HomePage() {
             >
               🔑 Add a key
             </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => {
-                dismissWelcome();
-                setTemplatesOpen(true);
-              }}
-            >
-              ⚀ Templates
-            </button>
             <button type="button" className="btn ghost" onClick={dismissWelcome}>
               ✕ Got it
             </button>
@@ -896,11 +1004,11 @@ export default function HomePage() {
                 className={`save-pill ${isDirty ? "dirty" : "saved"}`}
                 title={
                   isDirty
-                    ? "Unsaved changes since last library snapshot"
-                    : "In sync with the library snapshot"
+                    ? "Edited since last save — ⌘S to save again"
+                    : "In sync with the saved copy"
                 }
               >
-                {isDirty ? "● UNSAVED" : "✓ SAVED"}
+                {isDirty ? "● EDITED" : "✓ SAVED"}
               </span>
             ) : (
               <span className="save-pill new" title="Not in your project library yet">
@@ -925,7 +1033,7 @@ export default function HomePage() {
                     type="button"
                     className={`menu-item ${a === project.aspect ? "active" : ""}`}
                     onClick={() => {
-                      updateProjectMeta({ aspect: a });
+                      requestAspectChange(a);
                       setAspectMenuOpen(false);
                     }}
                   >
@@ -939,156 +1047,13 @@ export default function HomePage() {
           </div>
         </div>
         <div className="project-actions">
-          <span className="popover-anchor">
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() => setProjectsOpen((o) => !o)}
-              title="Project library"
-            >
-              ▤ Projects{projectStubs.length > 0 ? ` (${projectStubs.length})` : ""}
-            </button>
-            <Popover
-              open={projectsOpen}
-              onClose={() => setProjectsOpen(false)}
-              className="templates-menu"
-            >
-              <div className="templates-head">// PROJECT LIBRARY</div>
-              <button
-                type="button"
-                className="template-item"
-                onClick={() => {
-                  saveProjectToLibrary(project);
-                  setProjectsOpen(false);
-                }}
-              >
-                <span className="tpl-name">＋ Save current</span>
-                <span className="tpl-desc">snapshot &ldquo;{project.name}&rdquo; · {project.duration_s.toFixed(1)}s · {project.sections.length} sections</span>
-              </button>
-              {projectStubs.length === 0 ? (
-                <div className="proj-empty">no saved projects yet</div>
-              ) : (
-                projectStubs.map((p) => {
-                  const isOpen = p.id === project.id;
-                  return (
-                    <div key={p.id} className="proj-row">
-                      <button
-                        type="button"
-                        className={`template-item proj-pick ${isOpen ? "active" : ""}`}
-                        onClick={() => {
-                          if (isOpen) {
-                            setProjectsOpen(false);
-                            return;
-                          }
-                          if (project.updated_at) saveProjectToLibrary(project);
-                          const loaded = loadProjectFromLibrary(p.id);
-                          if (loaded) setProject(loaded);
-                          setProjectsOpen(false);
-                        }}
-                      >
-                        <span className="tpl-name">
-                          {isOpen ? "● " : ""}{p.name}
-                        </span>
-                        <span className="tpl-desc">
-                          {p.aspect.replace(":", " : ")} · {p.duration_s.toFixed(1)}s · {p.sections.length} sections · {new Date(p.updated_at).toLocaleDateString()}
-                        </span>
-                      </button>
-                      <div className="proj-actions">
-                        <button
-                          type="button"
-                          className="btn ghost proj-act"
-                          title="Rename"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const next = prompt("Rename project:", p.name);
-                            if (next && next.trim()) {
-                              renameProjectInLibrary(p.id, next.trim());
-                              if (isOpen) updateProjectMeta({ name: next.trim() });
-                            }
-                          }}
-                        >
-                          ✎
-                        </button>
-                        <button
-                          type="button"
-                          className="btn ghost proj-act"
-                          title="Duplicate"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const copy = duplicateProjectInLibrary(p.id);
-                            if (copy) setProject(copy);
-                            setProjectsOpen(false);
-                          }}
-                        >
-                          ⎘
-                        </button>
-                        <button
-                          type="button"
-                          className="btn ghost proj-act danger"
-                          title="Delete"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm(`Delete "${p.name}" from library? (current project stays loaded)`)) {
-                              deleteProjectFromLibrary(p.id);
-                            }
-                          }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </Popover>
-          </span>
-          <span className="popover-anchor">
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() => setTemplatesOpen((o) => !o)}
-              title="Project templates"
-            >
-              ⚀ Templates
-            </button>
-            <Popover
-              open={templatesOpen}
-              onClose={() => setTemplatesOpen(false)}
-              className="templates-menu"
-            >
-              <div className="templates-head">// PROJECT TEMPLATES</div>
-              {TEMPLATES.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  className="template-item"
-                  onClick={() => {
-                    if (confirm(`Load "${t.name}"? Current project will be replaced.`)) {
-                      setProject(t.build());
-                    }
-                    setTemplatesOpen(false);
-                  }}
-                >
-                  <span className="tpl-name">{t.name}</span>
-                  <span className="tpl-desc">{t.description}</span>
-                </button>
-              ))}
-            </Popover>
-          </span>
-          <button
-            type="button"
-            className="btn ghost"
-            onClick={() => setProvidersOpen(true)}
-            title="API keys"
-          >
-            🔑 Keys{configuredKeyCount > 0 ? ` (${configuredKeyCount})` : ""}
-          </button>
           <button
             type="button"
             className="btn ghost"
             onClick={handleUndo}
             disabled={historyPastLen === 0}
             title="Undo (⌘Z)"
+            aria-label="Undo (⌘Z)"
           >
             ↶
           </button>
@@ -1098,20 +1063,13 @@ export default function HomePage() {
             onClick={handleRedo}
             disabled={historyFutureLen === 0}
             title="Redo (⇧⌘Z)"
+            aria-label="Redo (⇧⌘Z)"
           >
             ↷
           </button>
           <button type="button" className="btn ghost" onClick={handleReset} title="Reset to defaults">↺ Reset</button>
-          <button
-            type="button"
-            className="btn ghost"
-            onClick={() => setHelpOpen(true)}
-            title="Keyboard shortcuts (?)"
-          >
-            ?
-          </button>
-          <button type="button" className="btn ghost" onClick={handleImport}>Import</button>
-          <button type="button" className="btn ghost" onClick={handleExport}>Export</button>
+          <button type="button" className="btn ghost" onClick={handleImport} title="Import a project JSON" aria-label="Import project JSON">⇧ Import</button>
+          <button type="button" className="btn ghost" onClick={handleExport} title="Export the project as JSON" aria-label="Export project JSON">⇩ Export</button>
           <button
             type="button"
             className={`btn ${playPosition !== null ? "primary" : ""}`}
@@ -1125,9 +1083,28 @@ export default function HomePage() {
         </div>
       </div>
 
-      <div className="lookbar">
+      <div className="project-settings">
+        <div className="project-settings-title">// PROJECT SETTINGS</div>
+        <div className="stage-meta-aspect" role="radiogroup" aria-label="Aspect ratio">
+          {ASPECT_OPTIONS.map((a) => (
+            <button
+              key={a}
+              type="button"
+              role="radio"
+              aria-checked={project.aspect === a}
+              className={`aspect-pill ${project.aspect === a ? "active" : ""} aspect-${a.replace(":", "-")}`}
+              onClick={() => requestAspectChange(a)}
+              title={`Set whole video to ${a}`}
+            >
+              <span className={`aspect-glyph glyph-${a.replace(":", "-")}`} aria-hidden />
+              <span className="aspect-label">{a}</span>
+            </button>
+          ))}
+        </div>
+        <div className="lookbar">
         <LookSlot
           label="// BRIEF"
+          icon="✎"
           value={project.brief?.name}
           open={lookOpen === "brief"}
           onToggle={() => setLookOpen(lookOpen === "brief" ? null : "brief")}
@@ -1148,6 +1125,7 @@ export default function HomePage() {
         </LookSlot>
         <LookSlot
           label="// GRADE"
+          icon="◐"
           value={project.grade?.name}
           open={lookOpen === "grade"}
           onToggle={() => setLookOpen(lookOpen === "grade" ? null : "grade")}
@@ -1168,6 +1146,7 @@ export default function HomePage() {
         </LookSlot>
         <LookSlot
           label="// MUSIC"
+          icon="♫"
           value={project.music_track?.name}
           open={lookOpen === "music"}
           onToggle={() => setLookOpen(lookOpen === "music" ? null : "music")}
@@ -1192,7 +1171,8 @@ export default function HomePage() {
           />
         </LookSlot>
         <LookSlot
-          label="// TITLE STYLE"
+          label="// GRAPHIC STYLE"
+          icon="T"
           value={project.title_settings?.name}
           open={lookOpen === "title"}
           onToggle={() => setLookOpen(lookOpen === "title" ? null : "title")}
@@ -1214,15 +1194,23 @@ export default function HomePage() {
             onClose={() => setLookOpen(null)}
           />
         </LookSlot>
+        </div>
+        <StageControls
+          project={project}
+          currentIndex={currentPreviewIndex}
+          startSeconds={previewStartSeconds}
+          isPlaying={playPosition !== null}
+          onTogglePlay={togglePreview}
+          onStop={stopPreview}
+        />
       </div>
 
       <PreviewStage
         project={project}
-        playPosition={playPosition}
-        activeSectionId={activeSectionId}
+        currentIndex={currentPreviewIndex}
+        startSeconds={previewStartSeconds}
         isPlaying={playPosition !== null}
         onTogglePlay={togglePreview}
-        onStop={stopPreview}
       />
 
       <div className="timeline-wrap">
@@ -1265,11 +1253,86 @@ export default function HomePage() {
           ))}
         </div>
 
+        <div className="tl-row-label">
+          // GRAPHICS
+          <button
+            type="button"
+            className="tl-row-add"
+            onClick={() => addGraphic(activeSectionStartS)}
+            title="Add a graphic overlay at the current section"
+          >
+            + Graphic
+          </button>
+        </div>
+        <div className="graphics-overlay-row">
+          {(project.graphics ?? []).length === 0 ? (
+            <div className="graphics-empty">
+              no graphics yet · graphics overlay on top of clips
+            </div>
+          ) : (
+            (project.graphics ?? []).map((g) => {
+              const total = Math.max(0.01, project.duration_s);
+              const left = (g.start_s / total) * 100;
+              const width = Math.min(100 - left, (g.duration_s / total) * 100);
+              const isEditing = editingGraphicId === g.id;
+              return (
+                <div
+                  key={g.id}
+                  className={`graphic-block ${isEditing ? "active" : ""} ${dragGraphicState?.id === g.id ? "dragging" : ""}`}
+                  style={{ left: `${left}%`, width: `${width}%` }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (dragGraphicState) return;
+                    setEditingGraphicId(isEditing ? null : g.id);
+                  }}
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.stopPropagation();
+                    const row = e.currentTarget.closest(".graphics-overlay-row") as HTMLElement | null;
+                    if (!row) return;
+                    const rect = row.getBoundingClientRect();
+                    setDragGraphicState({ id: g.id, rowLeft: rect.left, rowWidth: rect.width });
+                    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                  }}
+                  title={`${g.text} · ${g.start_s.toFixed(1)}s for ${g.duration_s.toFixed(1)}s · drag to move`}
+                >
+                  <span className="graphic-block-text">{g.text || "graphic"}</span>
+                  <span className="graphic-block-time">
+                    {g.start_s.toFixed(1)}s · {g.duration_s.toFixed(1)}s
+                  </span>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {editingGraphicId ? (() => {
+          const eg = (project.graphics ?? []).find((g) => g.id === editingGraphicId);
+          if (!eg) return null;
+          return (
+            <div className="graphic-inline-editor">
+              <GraphicOverlayEditor
+                overlay={eg}
+                projectDuration={project.duration_s}
+                onChange={(patch) => updateGraphic(eg.id, patch)}
+                onRemove={() => {
+                  removeGraphic(eg.id);
+                  setEditingGraphicId(null);
+                }}
+              />
+            </div>
+          );
+        })() : null}
+
+        <div className="tl-row-label">// VIDEO</div>
         <div
           className="clips-row"
           style={{ gridTemplateColumns: tlGridCols }}
         >
           {project.sections.map((section) => {
+            if (section.type === "title") {
+              return <div key={section.id} className="clip-slot empty" />;
+            }
             const isActive = section.id === activeSectionId;
             const isPreviewing = section.id === previewSectionId;
             const versionIdx = section.versions.findIndex((v) => v.id === section.active_version_id);
@@ -1278,11 +1341,6 @@ export default function HomePage() {
             const trans = transitionsByTo.get(section.id);
             const activeVer = section.versions.find((v) => v.id === section.active_version_id);
             const readyKind: "ready" | "still" | "draft" | "missing" = (() => {
-              if (section.type === "title") {
-                return activeVer && activeVer.kind === "title" && activeVer.text.trim().length > 0
-                  ? "ready"
-                  : "missing";
-              }
               if (activeVer && activeVer.kind === "clip" && activeVer.output_url) return "ready";
               const stillId = activeVer && activeVer.kind === "clip" ? activeVer.still_ref ?? section.active_still_id : section.active_still_id;
               const still = stillId ? section.stills.find((s) => s.id === stillId) : null;
@@ -1366,14 +1424,49 @@ export default function HomePage() {
                     </Popover>
                   </span>
                 ) : null}
-                <div className="clip-num">
-                  <span className={`clip-dot clip-dot-${readyKind}`} title={
-                    readyKind === "ready" ? "Motion rendered" :
-                    readyKind === "still" ? "Still ready, motion pending" :
-                    readyKind === "draft" ? "Draft — nothing generated" :
-                    "Missing"
-                  } />
-                  {section.index.toString().padStart(2, "0")} // {section.type.toUpperCase()}
+                <div className="clip-num-row">
+                  <div className="clip-num">
+                    <span className={`clip-dot clip-dot-${readyKind}`} title={
+                      readyKind === "ready" ? "Motion rendered" :
+                      readyKind === "still" ? "Still ready, motion pending" :
+                      readyKind === "draft" ? "Draft — nothing generated" :
+                      "Missing"
+                    } />
+                    {section.index.toString().padStart(2, "0")} // CLIP
+                  </div>
+                  {section.type === "clip" ? (
+                    <button
+                      type="button"
+                      className="clip-import"
+                      title="Import an image (becomes the still) or a video (becomes the rendered clip)"
+                      aria-label={`Import media into ${section.title}`}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const file = await pickFile("image/*,video/*");
+                        if (!file) return;
+                        const url = URL.createObjectURL(file);
+                        if (file.type.startsWith("video/")) {
+                          const ver = section.versions.find((v) => v.id === section.active_version_id);
+                          if (ver && ver.kind === "clip") {
+                            updateClipVersion(section.id, ver.id, { output_url: url });
+                            toast.success("Video imported", `${file.name} · clip ${section.index}`);
+                          } else {
+                            toast.error("Import failed", "Add a clip version first");
+                          }
+                        } else {
+                          const still = section.stills.find((s) => s.id === section.active_still_id);
+                          if (still) {
+                            updateStill(section.id, still.id, { output_url: url });
+                            toast.success("Image imported", `${file.name} · still ${section.index}`);
+                          } else {
+                            toast.error("Import failed", "Add a still first");
+                          }
+                        }
+                      }}
+                    >
+                      ▤ IMPORT
+                    </button>
+                  ) : null}
                 </div>
                 {(() => {
                   const v = section.versions.find((x) => x.id === section.active_version_id);
@@ -1381,32 +1474,16 @@ export default function HomePage() {
                   const still = stillRef ? section.stills.find((s) => s.id === stillRef) : null;
                   const thumb = still?.output_url;
                   const isVideo = v && v.kind === "clip" && v.output_url && /^https?:\/\//.test(v.output_url);
-                  if (section.type === "title") {
-                    return (
-                      <div
-                        className="clip-thumb title"
-                        style={{
-                          ...clipThumbStyle,
-                          background: project.title_settings?.background_color ?? "#0a0908",
-                          color: project.title_settings?.color ?? "#f4f1ea",
-                        }}
-                      >
-                        <span>
-                          {v && v.kind === "title" ? v.text.slice(0, 16) : "TITLE"}
-                        </span>
-                      </div>
-                    );
-                  }
                   if (thumb) {
                     return (
-                      <div className="clip-thumb" style={clipThumbStyle}>
+                      <div className={`clip-thumb ${aspectClass}`}>
                         <img src={thumb} alt={section.title} />
                         {isVideo ? <span className="clip-thumb-badge">▶</span> : null}
                       </div>
                     );
                   }
                   return (
-                    <div className="clip-thumb empty" style={clipThumbStyle}>
+                    <div className={`clip-thumb empty ${aspectClass}`}>
                       no still
                     </div>
                   );
@@ -1513,7 +1590,7 @@ export default function HomePage() {
                         setInsertAfterId(null);
                       }}
                     >
-                      Title card
+                      Graphic
                     </button>
                   </Popover>
                 </span>
@@ -1602,7 +1679,7 @@ export default function HomePage() {
                   setAddMenuOpen(false);
                 }}
               >
-                Title card
+                Graphic
               </button>
             </Popover>
           </span>
@@ -1638,6 +1715,21 @@ export default function HomePage() {
                 {project.music_track?.model ?? "—"} · v1 · {project.duration_s.toFixed(1)}s · auto-ducks under VO −6dB
               </span>
               <span>{project.music_track?.output_url ? "♪ ✓" : "♪"} ▾</span>
+            </button>
+            <button
+              type="button"
+              className="track-import"
+              title="Import your own music file (mp3, wav, m4a)"
+              aria-label="Import music file"
+              onClick={async () => {
+                const file = await pickFile("audio/*");
+                if (!file) return;
+                const url = URL.createObjectURL(file);
+                updateMusic({ output_url: url, name: file.name.replace(/\.[^.]+$/, "") });
+                toast.success("Music imported", file.name);
+              }}
+            >
+              ▤ IMPORT
             </button>
             {project.music_track?.output_url ? (
               <>
@@ -1681,13 +1773,17 @@ export default function HomePage() {
       </div>
 
       {activeSection ? (
-        <FlowPanel
-          section={activeSection}
-          project={project}
-          providerKeys={providerKeys}
-          onOpenProviders={() => setProvidersOpen(true)}
-          onProviderKeyMissing={() => setProvidersOpen(true)}
-        />
+        <div className="flow-modal-overlay" onClick={() => setActiveSection(null)}>
+          <div className="flow-modal" onClick={(e) => e.stopPropagation()}>
+            <FlowPanel
+              section={activeSection}
+              project={project}
+              providerKeys={providerKeys}
+              onOpenProviders={() => setProvidersOpen(true)}
+              onProviderKeyMissing={() => setProvidersOpen(true)}
+            />
+          </div>
+        </div>
       ) : null}
 
       {renderOpen ? (
@@ -1717,14 +1813,14 @@ export default function HomePage() {
             },
             {
               id: "new-title",
-              label: "New title card",
-              keywords: "add insert title card",
+              label: "New graphic",
+              keywords: "add insert title card graphic",
               run: () => { addTitleSection(null); toast.info("Added title"); },
             },
             {
               id: "save",
-              label: "Save snapshot to library",
-              keywords: "save snapshot library s",
+              label: "Save project to library",
+              keywords: "save project library s",
               run: () => { saveProjectToLibrary(project); toast.success("Saved to library", project.name); },
             },
             {
@@ -1750,18 +1846,6 @@ export default function HomePage() {
               label: "Manage provider keys",
               keywords: "keys providers replicate elevenlabs runway api",
               run: () => setProvidersOpen(true),
-            },
-            {
-              id: "templates",
-              label: "Browse project templates",
-              keywords: "templates starter blank product reveal",
-              run: () => setTemplatesOpen(true),
-            },
-            {
-              id: "projects",
-              label: "Open project library",
-              keywords: "projects library switch open",
-              run: () => setProjectsOpen(true),
             },
             {
               id: "reset",
@@ -1798,10 +1882,7 @@ export default function HomePage() {
       ) : null}
 
       <aside className="workspace-library">
-        <div className="lib-tabs">
-          <button type="button" className="lib-tab active">// PROJECTS</button>
-          <button type="button" className="lib-tab" onClick={() => setTemplatesOpen(true)}>// TEMPLATES</button>
-        </div>
+        <div className="lib-head"><span className="lib-tab-icon" aria-hidden>⊞</span> // LIBRARY</div>
         <div className="lib-body">
           <button
             type="button"
@@ -1810,11 +1891,11 @@ export default function HomePage() {
               saveProjectToLibrary(project);
               toast.success("Saved to library", project.name);
             }}
-            title="Save snapshot (⌘S)"
+            title="Save current project (⌘S)"
           >
-            ＋ Save current as snapshot
+            <span className="lib-tab-icon" aria-hidden>⊞</span> Save current project
           </button>
-          <div className="lib-section-title">// SAVED</div>
+          <div className="lib-section-title"><span className="lib-section-icon" aria-hidden>●</span> // SAVED</div>
           {projectStubs.length === 0 ? (
             <div className="lib-empty">no saved projects yet</div>
           ) : (
@@ -1826,15 +1907,34 @@ export default function HomePage() {
                     key={p.id}
                     type="button"
                     className={`lib-row ${isOpen ? "active" : ""}`}
+                    aria-label={
+                      isOpen
+                        ? `${p.name} — currently loaded`
+                        : `Load saved project ${p.name} — replaces current project`
+                    }
+                    title={
+                      isOpen
+                        ? "Currently loaded — edits flow into the live project"
+                        : "Click to load · current project is auto-saved first"
+                    }
                     onClick={() => {
-                      if (isOpen) return;
-                      if (project.updated_at) saveProjectToLibrary(project);
+                      if (isOpen) {
+                        toast.info(`${p.name} is already loaded`);
+                        return;
+                      }
+                      if (isInLibrary) saveProjectToLibrary(project);
                       const loaded = loadProjectFromLibrary(p.id);
-                      if (loaded) setProject(loaded);
+                      if (loaded) {
+                        setProject(loaded);
+                        toast.success("Loaded project", `${p.name} · ${p.sections.length} sections`);
+                      } else {
+                        toast.error("Load failed", "Saved project not found in library");
+                      }
                     }}
                   >
                     <span className="lib-row-name">
                       {isOpen ? "● " : ""}{p.name}
+                      {!isOpen ? <span className="lib-row-action">↻ Load</span> : null}
                     </span>
                     <span className="lib-row-meta">
                       {p.aspect.replace(":", " : ")} · {p.duration_s.toFixed(1)}s · {p.sections.length} sec
@@ -1844,7 +1944,7 @@ export default function HomePage() {
               })}
             </div>
           )}
-          <div className="lib-section-title">// TEMPLATES</div>
+          <div className="lib-section-title"><span className="lib-section-icon" aria-hidden>⚀</span> // TEMPLATES</div>
           <div className="lib-list">
             {TEMPLATES.slice(0, 5).map((t) => (
               <button
@@ -1854,15 +1954,24 @@ export default function HomePage() {
                 onClick={() => {
                   confirmAsk({
                     title: `Load ${t.name}?`,
-                    message: "This replaces your current timeline with the template.",
-                    confirm_label: "Load template",
-                    cancel_label: "Keep editing",
-                    destructive: true,
-                    onConfirm: () => setProject(t.build()),
+                    message: `This replaces your current project with the template. Want to save your current project as a saved-project (in // SAVED) first so you can come back to it?`,
+                    confirm_label: "Save current & load",
+                    alt_label: "Load without saving",
+                    cancel_label: "Cancel",
+                    destructive: false,
+                    onConfirm: () => {
+                      saveProjectToLibrary(project);
+                      toast.success("Saved current to library", `${project.name} → // SAVED`);
+                      setProject(t.build());
+                    },
+                    onAlt: () => setProject(t.build()),
                   });
                 }}
               >
-                <span className="lib-row-name">{t.name}</span>
+                <span className="lib-row-name">
+                  <span className="lib-row-icon" aria-hidden>{templateIcon(t.id)}</span>
+                  {t.name}
+                </span>
                 <span className="lib-row-meta">{t.description}</span>
               </button>
             ))}
@@ -2097,32 +2206,105 @@ function VOTrack({
   );
 }
 
-/* ───────────── PREVIEW STAGE ───────────── */
+/* ───────────── STAGE CONTROLS ───────────── */
 
-function PreviewStage({
+function StageControls({
   project,
-  playPosition,
-  activeSectionId,
+  currentIndex,
+  startSeconds,
   isPlaying,
   onTogglePlay,
   onStop,
 }: {
   project: Project;
-  playPosition: number | null;
-  activeSectionId: string | null;
+  currentIndex: number;
+  startSeconds: number;
   isPlaying: boolean;
   onTogglePlay: () => void;
   onStop: () => void;
 }) {
   const setActiveSection = useStore((s) => s.setActiveSection);
-  const updateProjectMeta = useStore((s) => s.updateProjectMeta);
+  const total = project.duration_s;
 
-  const currentIndex = useMemo(() => {
-    if (playPosition !== null) return playPosition;
-    const i = project.sections.findIndex((s) => s.id === activeSectionId);
-    return i >= 0 ? i : 0;
-  }, [playPosition, activeSectionId, project.sections]);
+  const handleSeek = (idx: number) => {
+    if (!project.sections.length) return;
+    const next = ((idx % project.sections.length) + project.sections.length) % project.sections.length;
+    setActiveSection(project.sections[next].id);
+  };
 
+  return (
+    <div className="stage-controls" onClick={(e) => e.stopPropagation()}>
+      <div className="stage-scrubber" role="presentation">
+        {project.sections.map((s, i) => (
+          <button
+            key={s.id}
+            type="button"
+            className={`stage-scrub-seg ${i === currentIndex ? "active" : ""} ${i < currentIndex ? "past" : ""}`}
+            style={{ flex: Math.max(0.1, s.duration_s) }}
+            onClick={() => setActiveSection(s.id)}
+            title={`${s.index.toString().padStart(2, "0")} ${s.title} · ${formatTimecode(project.sections.slice(0, i).reduce((a, x) => a + x.duration_s, 0))}`}
+            aria-label={`Jump to section ${s.index} ${s.title}`}
+          />
+        ))}
+      </div>
+      <div className="stage-controls-row">
+        <button type="button" className="stage-iconbtn" title="Previous" aria-label="Previous section" onClick={() => handleSeek(currentIndex - 1)}>⏮</button>
+        <button
+          type="button"
+          className="stage-iconbtn primary"
+          title={isPlaying ? "Pause (Space)" : "Play (Space)"}
+          aria-label={isPlaying ? "Pause preview" : "Play preview"}
+          onClick={onTogglePlay}
+        >
+          {isPlaying ? "❚❚" : "▶"}
+        </button>
+        <button type="button" className="stage-iconbtn" title="Next" aria-label="Next section" onClick={() => handleSeek(currentIndex + 1)}>⏭</button>
+        {isPlaying ? (
+          <button type="button" className="stage-iconbtn" title="Stop" aria-label="Stop preview" onClick={onStop}>◼</button>
+        ) : null}
+        <span className="stage-controls-time">
+          {formatTimecode(startSeconds)}
+          <span className="stage-divider"> / </span>
+          {formatTimecode(total)}
+        </span>
+        <div className="stage-controls-spacer" />
+        <button
+          type="button"
+          className="stage-iconbtn"
+          title="Fullscreen"
+          aria-label="Toggle fullscreen"
+          onClick={() => {
+            const canvas = document.querySelector(".stage-canvas") as HTMLElement | null;
+            if (!canvas) return;
+            if (document.fullscreenElement) {
+              document.exitFullscreen().catch((err: unknown) => toast.warn("Couldn't exit fullscreen", String(err)));
+              return;
+            }
+            canvas.requestFullscreen?.().catch((err: unknown) => toast.warn("Fullscreen blocked", String(err)));
+          }}
+        >
+          ⛶
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────── PREVIEW STAGE ───────────── */
+
+function PreviewStage({
+  project,
+  currentIndex,
+  startSeconds,
+  isPlaying,
+  onTogglePlay,
+}: {
+  project: Project;
+  currentIndex: number;
+  startSeconds: number;
+  isPlaying: boolean;
+  onTogglePlay: () => void;
+}) {
   const section = project.sections[currentIndex];
   if (!section) {
     return (
@@ -2148,18 +2330,12 @@ function PreviewStage({
       : null;
   const stillUrl = referencedStill?.output_url ?? null;
 
-  const startSeconds = project.sections
-    .slice(0, currentIndex)
-    .reduce((acc, s) => acc + s.duration_s, 0);
-  const total = project.duration_s;
-
   const aspectRatio =
     project.aspect === "16:9" ? "16 / 9" : project.aspect === "1:1" ? "1 / 1" : "9 / 16";
 
-  const handleSeekToSection = (idx: number) => {
-    const next = ((idx % project.sections.length) + project.sections.length) % project.sections.length;
-    setActiveSection(project.sections[next].id);
-  };
+  const activeOverlays = (project.graphics ?? []).filter(
+    (g) => startSeconds >= g.start_s && startSeconds < g.start_s + g.duration_s,
+  );
 
   return (
     <div className="preview-stage">
@@ -2209,8 +2385,21 @@ function PreviewStage({
           <div className="stage-hud">
             <span className="stage-idx">{section.index.toString().padStart(2, "0")}</span>
             <span className="stage-title-text">{section.title}</span>
-            <span className="stage-type">{section.type.toUpperCase()}</span>
+            <span className="stage-type">{section.type === "title" ? "GRAPHIC" : "CLIP"}</span>
           </div>
+
+          {activeOverlays.map((g) => (
+            <div
+              key={g.id}
+              className={`stage-graphic-overlay pos-${g.position ?? "center"}`}
+              style={{
+                color: g.color ?? project.title_settings?.color ?? "#f4f1ea",
+                fontFamily: g.font ?? project.title_settings?.font ?? "var(--font-display)",
+              }}
+            >
+              <span>{g.text}</span>
+            </div>
+          ))}
 
           {/* Center play overlay when paused */}
           {!isPlaying ? (
@@ -2224,114 +2413,9 @@ function PreviewStage({
               <span className="stage-center-play-glyph">▶</span>
             </button>
           ) : null}
-
-          {/* Bottom overlay control bar */}
-          <div className="stage-chrome" onClick={(e) => e.stopPropagation()}>
-            <div className="stage-scrubber" role="presentation">
-              {project.sections.map((s, i) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className={`stage-scrub-seg ${i === currentIndex ? "active" : ""} ${i < currentIndex ? "past" : ""}`}
-                  style={{ flex: Math.max(0.1, s.duration_s) }}
-                  onClick={() => setActiveSection(s.id)}
-                  title={`Jump to ${s.index.toString().padStart(2, "0")} ${s.title} · ${formatTimecode(project.sections.slice(0, i).reduce((a, x) => a + x.duration_s, 0))}`}
-                  aria-label={`Jump to section ${s.index} ${s.title}`}
-                />
-              ))}
-            </div>
-            <div className="stage-chrome-row">
-              <div className="stage-chrome-left">
-                <button
-                  type="button"
-                  className="stage-iconbtn"
-                  title="Previous section"
-                  aria-label="Previous section"
-                  onClick={() => handleSeekToSection(currentIndex - 1)}
-                >
-                  ⏮
-                </button>
-                <button
-                  type="button"
-                  className="stage-iconbtn primary"
-                  title={isPlaying ? "Pause (Space)" : "Play (Space)"}
-                  aria-label={isPlaying ? "Pause preview" : "Play preview"}
-                  onClick={onTogglePlay}
-                >
-                  {isPlaying ? "❚❚" : "▶"}
-                </button>
-                <button
-                  type="button"
-                  className="stage-iconbtn"
-                  title="Next section"
-                  aria-label="Next section"
-                  onClick={() => handleSeekToSection(currentIndex + 1)}
-                >
-                  ⏭
-                </button>
-                {isPlaying ? (
-                  <button
-                    type="button"
-                    className="stage-iconbtn"
-                    title="Stop"
-                    aria-label="Stop preview"
-                    onClick={onStop}
-                  >
-                    ◼
-                  </button>
-                ) : null}
-                <span className="stage-chrome-time">
-                  {formatTimecode(startSeconds)}
-                  <span className="stage-divider">/</span>
-                  {formatTimecode(total)}
-                </span>
-              </div>
-              <div className="stage-chrome-right">
-                <button
-                  type="button"
-                  className="stage-iconbtn"
-                  title="Fullscreen"
-                  aria-label="Toggle fullscreen"
-                  onClick={(e) => {
-                    const canvas = (e.currentTarget.closest(".stage-canvas") as HTMLElement) ?? null;
-                    if (!canvas) return;
-                    if (document.fullscreenElement) document.exitFullscreen();
-                    else canvas.requestFullscreen?.();
-                  }}
-                >
-                  ⛶
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
-      <div className="stage-meta">
-        <div className="stage-meta-aspect" role="radiogroup" aria-label="Aspect ratio">
-          {ASPECT_OPTIONS.map((a) => (
-            <button
-              key={a}
-              type="button"
-              role="radio"
-              aria-checked={project.aspect === a}
-              className={`aspect-pill ${project.aspect === a ? "active" : ""} aspect-${a.replace(":", "-")}`}
-              onClick={() => updateProjectMeta({ aspect: a })}
-              title={`Set whole video to ${a}`}
-            >
-              <span className={`aspect-glyph glyph-${a.replace(":", "-")}`} aria-hidden />
-              <span className="aspect-label">{a}</span>
-            </button>
-          ))}
-        </div>
-        <div className="stage-meta-info">
-          <span>{section.index.toString().padStart(2, "0")} / {project.sections.length}</span>
-          <span className="stage-divider">·</span>
-          <span>{section.title}</span>
-          <span className="stage-divider">·</span>
-          <span>{section.duration_s.toFixed(1)}s</span>
-        </div>
-      </div>
     </div>
   );
 }
@@ -2367,6 +2451,7 @@ function TitleCardLive({
 function ConfirmViewport() {
   const prompt = useConfirm((s) => s.prompt);
   const resolve = useConfirm((s) => s.resolve);
+  const resolveAlt = useConfirm((s) => s.resolveAlt);
   const cancel = useConfirm((s) => s.cancel);
   if (!prompt) return null;
   const titleId = `confirm-title-${prompt.id}`;
@@ -2392,6 +2477,15 @@ function ConfirmViewport() {
           >
             {prompt.cancel_label}
           </button>
+          {prompt.alt_label && prompt.onAlt ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => { resolveAlt(); }}
+            >
+              {prompt.alt_label}
+            </button>
+          ) : null}
           <button
             type="button"
             className={`btn ${prompt.destructive ? "danger" : "primary"}`}
@@ -2479,6 +2573,7 @@ function ToastViewport() {
 
 function LookSlot({
   label,
+  icon,
   value,
   open,
   onToggle,
@@ -2486,6 +2581,7 @@ function LookSlot({
   children,
 }: {
   label: string;
+  icon?: string;
   value?: string;
   open: boolean;
   onToggle: () => void;
@@ -2495,7 +2591,10 @@ function LookSlot({
   return (
     <div className="slot popover-anchor">
       <button type="button" className="slot-btn" onClick={onToggle}>
-        <span className="label">{label}</span>
+        <span className="label">
+          {icon ? <span className="slot-icon" aria-hidden>{icon}</span> : null}
+          {label}
+        </span>
         <span className="value">
           {value ?? "—"} <span className="caret">▾</span>
         </span>
@@ -2646,7 +2745,7 @@ function BriefEditor({
     <div className="editor">
       <div className="editor-head">
         <span>// BRIEF</span>
-        <button type="button" className="btn ghost" onClick={onClose}>✕</button>
+        <button type="button" className="btn ghost" onClick={onClose} aria-label="Close brief editor" title="Close">✕</button>
       </div>
       <LibrarySection
         library={library}
@@ -2747,6 +2846,7 @@ function RefList({
                 type="button"
                 className="ref-remove"
                 title="Remove"
+                aria-label={`Remove reference ${i + 1}`}
                 onClick={() => onChange(refs.filter((_, j) => j !== i))}
               >
                 ✕
@@ -2809,7 +2909,7 @@ function GradeEditor({
     <div className="editor">
       <div className="editor-head">
         <span>// GRADE</span>
-        <button type="button" className="btn ghost" onClick={onClose}>✕</button>
+        <button type="button" className="btn ghost" onClick={onClose} aria-label="Close grade editor" title="Close">✕</button>
       </div>
       <LibrarySection
         library={library}
@@ -2918,7 +3018,7 @@ function MusicEditor({
     <div className="editor">
       <div className="editor-head">
         <span>// MUSIC</span>
-        <button type="button" className="btn ghost" onClick={onClose}>✕</button>
+        <button type="button" className="btn ghost" onClick={onClose} aria-label="Close music editor" title="Close">✕</button>
       </div>
       <LibrarySection
         library={library}
@@ -3006,8 +3106,8 @@ function TitleStyleEditor({
   return (
     <div className="editor">
       <div className="editor-head">
-        <span>// TITLE STYLE</span>
-        <button type="button" className="btn ghost" onClick={onClose}>✕</button>
+        <span>// GRAPHIC STYLE</span>
+        <button type="button" className="btn ghost" onClick={onClose} aria-label="Close title style editor" title="Close">✕</button>
       </div>
       <LibrarySection
         library={library}
@@ -3124,6 +3224,77 @@ function TransitionEditor({
   );
 }
 
+function GraphicOverlayEditor({
+  overlay,
+  projectDuration,
+  onChange,
+  onRemove,
+}: {
+  overlay: GraphicOverlay;
+  projectDuration: number;
+  onChange: (patch: Partial<Omit<GraphicOverlay, "id">>) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="editor compact">
+      <div className="editor-head">
+        <span>// GRAPHIC</span>
+        <button type="button" className="btn ghost" onClick={onRemove} aria-label="Remove graphic">✕ Remove</button>
+      </div>
+      <Field label="Text">
+        <textarea
+          rows={2}
+          className="field-input tall"
+          value={overlay.text}
+          onChange={(e) => onChange({ text: e.target.value })}
+          placeholder="What the graphic says"
+        />
+      </Field>
+      <div className="field-row">
+        <Field label="Position">
+          <select
+            className="field-input"
+            value={overlay.position ?? "center"}
+            onChange={(e) => onChange({ position: e.target.value as "top" | "center" | "bottom" })}
+          >
+            <option value="top">Top</option>
+            <option value="center">Center</option>
+            <option value="bottom">Bottom</option>
+          </select>
+        </Field>
+        <Field label={`Start ${overlay.start_s.toFixed(1)}s`}>
+          <input
+            type="range"
+            min={0}
+            max={Math.max(0, projectDuration - 0.5)}
+            step={0.1}
+            value={overlay.start_s}
+            onChange={(e) => onChange({ start_s: parseFloat(e.target.value) })}
+          />
+        </Field>
+        <Field label={`Duration ${overlay.duration_s.toFixed(1)}s`}>
+          <input
+            type="range"
+            min={0.5}
+            max={Math.max(0.5, projectDuration - overlay.start_s)}
+            step={0.1}
+            value={overlay.duration_s}
+            onChange={(e) => onChange({ duration_s: parseFloat(e.target.value) })}
+          />
+        </Field>
+      </div>
+      <Field label="Color">
+        <input
+          type="color"
+          className="field-input"
+          value={overlay.color ?? "#f4f1ea"}
+          onChange={(e) => onChange({ color: e.target.value })}
+        />
+      </Field>
+    </div>
+  );
+}
+
 function VOSegmentEditor({
   segment,
   projectDuration,
@@ -3145,7 +3316,7 @@ function VOSegmentEditor({
   projectDuration: number;
   job?: { status: "running" | "error"; error?: string };
   hasKey: boolean;
-  onChange: (patch: Partial<{ text: string; voice: string; start_s: number; duration_s: number }>) => void;
+  onChange: (patch: Partial<{ text: string; voice: string; start_s: number; duration_s: number; output_url: string }>) => void;
   onGenerate: () => void;
   onDismissError: () => void;
   onRemove: () => void;
@@ -3154,7 +3325,23 @@ function VOSegmentEditor({
     <div className="editor compact">
       <div className="editor-head">
         <span>// VO</span>
-        <button type="button" className="btn ghost" onClick={onRemove}>✕ Remove</button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            type="button"
+            className="btn ghost"
+            title="Import an audio file instead of generating"
+            onClick={async () => {
+              const file = await pickFile("audio/*");
+              if (!file) return;
+              const url = URL.createObjectURL(file);
+              onChange({ output_url: url });
+              toast.success("VO imported", file.name);
+            }}
+          >
+            ▤ Import
+          </button>
+          <button type="button" className="btn ghost" onClick={onRemove}>✕ Remove</button>
+        </div>
       </div>
       <Field label="Text">
         <textarea
@@ -3331,6 +3518,7 @@ function FlowPanel({
       );
       const jobKey = stillJobKey(section.id, activeStill.id);
       setJob(jobKey, { status: "running", startedAt: Date.now() });
+      let throttled = false;
       try {
         const r = await fetch(url, { credentials: "omit" });
         if (!r.ok) {
@@ -3343,8 +3531,9 @@ function FlowPanel({
             // not JSON; keep status code
           }
           if (r.status === 402 || /queue/i.test(detail)) {
+            throttled = true;
             throw new Error(
-              `Pollinations free queue is full — ${detail}. Wait ~30s and try again, sign up at https://enter.pollinations.ai, or add a Replicate key for Flux.`,
+              `Pollinations free queue is full — ${detail}.`,
             );
           }
           throw new Error(`Pollinations ${r.status}: ${detail}`);
@@ -3353,10 +3542,37 @@ function FlowPanel({
         const blobUrl = URL.createObjectURL(blob);
         updateStill(section.id, activeStill.id, { output_url: blobUrl });
         clearJob(jobKey);
+        return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        const replicateToken = providerKeys.replicate;
+        if (throttled && replicateToken) {
+          toast.info("Pollinations queued", "Falling back to Flux Schnell · ~$0.003");
+          try {
+            const fallbackUrl = await runReplicateImage({
+              model: "flux-schnell",
+              prompt: composedPrompt,
+              aspect: project.aspect,
+              apiToken: replicateToken,
+            });
+            updateStill(section.id, activeStill.id, { output_url: fallbackUrl });
+            clearJob(jobKey);
+            toast.success("Fallback succeeded", "Generated on Flux Schnell · switch the still's model to make it stick");
+            return;
+          } catch (fallbackErr) {
+            const fbMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+            setJob(jobKey, { status: "error", error: fbMsg });
+            toast.error("Flux Schnell fallback failed", fbMsg);
+            return;
+          }
+        }
         setJob(jobKey, { status: "error", error: message });
-        toast.error("Free preview throttled", message);
+        toast.error(
+          throttled ? "Free preview throttled" : "Generation failed",
+          throttled
+            ? `${message} Wait ~30s, sign up at https://enter.pollinations.ai, or add a Replicate key for automatic Flux Schnell fallback.`
+            : message,
+        );
       }
       return;
     }
@@ -3749,14 +3965,14 @@ function TitleFlowBody({
   return (
     <div className="flow-body single">
       <div className="stage full">
-        <div className="stage-title"><span className="num">01</span>TITLE CARD</div>
+        <div className="stage-title"><span className="num">01</span><span className="stage-title-icon" aria-hidden>T</span>GRAPHIC</div>
         <Field label="Text">
           <textarea
             className="field-input tall"
             rows={3}
             value={titleVersion?.text ?? ""}
             disabled={!titleVersion}
-            placeholder={titleVersion ? "Title text" : "+ new version to start"}
+            placeholder={titleVersion ? "Graphic text" : "+ new version to start"}
             onChange={(e) => onChangeTitleVersion({ text: e.target.value })}
           />
         </Field>
@@ -3793,6 +4009,7 @@ function TitleFlowBody({
                       type="button"
                       className="vrow-remove"
                       title="Remove version"
+                      aria-label={`Remove version ${v.label}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         onRemoveVersion(v.id);
@@ -3913,7 +4130,7 @@ function ClipFlowBody({
     <div className="flow-body">
       {/* STAGE 1 — STILL */}
       <div className="stage">
-        <div className="stage-title"><span className="num">01</span>STILL</div>
+        <div className="stage-title"><span className="num">01</span><span className="stage-title-icon" aria-hidden>▣</span>STILL</div>
 
         <Field label="Image prompt">
           <textarea
@@ -3984,34 +4201,47 @@ function ClipFlowBody({
             <div className="field-pill cost">{formatCost(stillCost)}</div>
           </Field>
         </div>
-        {activeStill ? (
-          <div className="ref-hint">
-            {(() => {
-              const refSectionId = parseLastFrameRef(activeStill.input_ref);
-              const briefRef = project.brief?.refs?.[0];
-              const supports = imageModelSupportsReference(activeStill.model as never);
-              if (refSectionId) {
-                const sec = project.sections.find((s) => s.id === refSectionId);
-                const label = sec ? `${sec.index.toString().padStart(2, "0")} last frame` : "previous frame";
-                return supports
-                  ? `→ ${label} feeds into the still as init image (prompt_strength 0.68)`
-                  : `→ ${label} captured but ignored; switch to SDXL for init-image continuity`;
-              }
-              if (briefRef) {
-                return supports
-                  ? `→ brief reference image used as init (prompt_strength 0.68)`
-                  : `→ brief reference image ignored; SDXL accepts an init image`;
-              }
-              return null;
-            })()}
-          </div>
-        ) : null}
+        {activeStill ? (() => {
+          const refSectionId = parseLastFrameRef(activeStill.input_ref);
+          const briefRef = project.brief?.refs?.[0];
+          const supports = imageModelSupportsReference(activeStill.model as never);
+          let text: string | null = null;
+          if (refSectionId) {
+            const sec = project.sections.find((s) => s.id === refSectionId);
+            const label = sec ? `${sec.index.toString().padStart(2, "0")} last frame` : "previous frame";
+            text = supports
+              ? `→ ${label} feeds into the still as init image (prompt_strength 0.68)`
+              : `→ ${label} captured but ignored; switch to SDXL for init-image continuity`;
+          } else if (briefRef) {
+            text = supports
+              ? `→ brief reference image used as init (prompt_strength 0.68)`
+              : `→ brief reference image ignored; SDXL accepts an init image`;
+          }
+          if (!text) return null;
+          if (supports) return <div className="ref-hint">{text}</div>;
+          return (
+            <button
+              type="button"
+              className="ref-hint"
+              title="Switch model to SDXL so the reference image is used as an init image"
+              aria-label="Switch model to SDXL to use reference image"
+              onClick={() => {
+                onUpdateStill(activeStill.id, { model: "sdxl" });
+                toast.success("Model switched", "SDXL accepts init images · regenerate to apply");
+              }}
+            >
+              {text}
+            </button>
+          );
+        })() : null}
 
         <div className="preview-row">
           <div
-            className={`preview-box${activeStill?.output_url ? " has-image" : ""}${
-              stillJob?.status === "running" ? " busy" : ""
-            }${stillJob?.status === "error" ? " errored" : ""}`}
+            className={`preview-box aspect-${project.aspect.replace(":", "-")}${
+              activeStill?.output_url ? " has-image" : ""
+            }${stillJob?.status === "running" ? " busy" : ""}${
+              stillJob?.status === "error" ? " errored" : ""
+            }`}
           >
             {activeStill?.output_url ? (
               <img
@@ -4072,6 +4302,7 @@ function ClipFlowBody({
                         type="button"
                         className="vrow-remove"
                         title="Remove still"
+                        aria-label={`Remove still ${still.label}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           onRemoveStill(still.id);
@@ -4139,14 +4370,14 @@ function ClipFlowBody({
                 ? "+ Add still first"
                 : stillNeedsKey
                   ? `🔑 Add ${stillProviderName ?? "provider"} key`
-                : "⏵ Generate still"}
+                : "✦ Generate still"}
           </button>
         </div>
       </div>
 
       {/* STAGE 2 — MOTION */}
       <div className="stage">
-        <div className="stage-title"><span className="num">02</span>MOTION</div>
+        <div className="stage-title"><span className="num">02</span><span className="stage-title-icon" aria-hidden>◐</span>MOTION</div>
 
         <Field label="Motion prompt">
           <textarea
@@ -4221,9 +4452,11 @@ function ClipFlowBody({
 
         <div className="preview-row">
           <div
-            className={`preview-box motion${motionStillUrl || motionVideoUrl ? " has-image" : ""}${
-              motionJob?.status === "running" ? " busy" : ""
-            }${motionJob?.status === "error" ? " errored" : ""}`}
+            className={`preview-box motion aspect-${project.aspect.replace(":", "-")}${
+              motionStillUrl || motionVideoUrl ? " has-image" : ""
+            }${motionJob?.status === "running" ? " busy" : ""}${
+              motionJob?.status === "error" ? " errored" : ""
+            }`}
           >
             {motionVideoUrl ? (
               <video
@@ -4294,6 +4527,7 @@ function ClipFlowBody({
                         type="button"
                         className="vrow-remove"
                         title="Remove version"
+                        aria-label={`Remove version ${v.label}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           onRemoveClipVersion(v.id);
@@ -4342,7 +4576,7 @@ function ClipFlowBody({
               ? "● Generating…"
               : motionNeedsKey
                 ? `🔑 Add ${motionProviderName ?? "provider"} key`
-                : "⏵ Generate motion"}
+                : "✦ Generate motion"}
           </button>
         </div>
       </div>
@@ -4467,7 +4701,7 @@ function RenderDialog({ project, onClose }: { project: Project; onClose: () => v
     if (s.type === "title") {
       const v = s.versions.find((x) => x.id === s.active_version_id);
       const ready = v && v.kind === "title" && v.text.trim().length > 0;
-      return { id: s.id, label: s.title, ready, reason: ready ? "title text set" : "missing title text" };
+      return { id: s.id, label: s.title, ready, reason: ready ? "graphic text set" : "missing graphic text" };
     }
     const v = s.versions.find((x) => x.id === s.active_version_id);
     if (!v || v.kind !== "clip") {
@@ -4767,19 +5001,19 @@ function CommandPalette({
 function HelpDialog({ onClose }: { onClose: () => void }) {
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform || "");
   const mod = isMac ? "⌘" : "Ctrl";
-  const groups: { title: string; items: { keys: string[]; label: string }[] }[] = [
+  const shortcutGroups: { title: string; items: { keys: string[]; label: string }[] }[] = [
     {
-      title: "// EDITING",
+      title: "Editing",
       items: [
         { keys: [`${mod} Z`], label: "Undo" },
         { keys: [`⇧ ${mod} Z`, `${mod} Y`], label: "Redo" },
-        { keys: [`${mod} S`], label: "Save snapshot to library" },
+        { keys: [`${mod} S`], label: "Save project to library" },
         { keys: ["D"], label: "Duplicate active section" },
         { keys: ["Del", "⌫"], label: "Remove active section" },
       ],
     },
     {
-      title: "// NAVIGATION",
+      title: "Navigation",
       items: [
         { keys: ["←"], label: "Previous section" },
         { keys: ["→"], label: "Next section" },
@@ -4787,55 +5021,117 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
       ],
     },
     {
-      title: "// PLAYBACK",
+      title: "Playback & command",
       items: [
         { keys: ["Space"], label: "Preview / stop timeline" },
-      ],
-    },
-    {
-      title: "// COMMAND",
-      items: [
         { keys: [`${mod} K`], label: "Command palette" },
-      ],
-    },
-    {
-      title: "// HELP",
-      items: [
         { keys: ["?", "/"], label: "Open this dialog" },
       ],
     },
   ];
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 760 }}>
         <div className="modal-head">
           <div>
-            <div className="modal-title">// SHORTCUTS</div>
-            <div className="modal-sub">Keys are ignored while typing in inputs</div>
+            <div className="modal-title">// HELP</div>
+            <div className="modal-sub">How AI Cinema works · keys live in your browser · free to use</div>
           </div>
-          <button type="button" className="btn ghost" onClick={onClose}>✕ Close</button>
+          <button type="button" className="btn ghost" onClick={onClose} aria-label="Close help">✕ Close</button>
         </div>
-        <div className="modal-body">
-          {groups.map((g) => (
-            <div key={g.title} className="modal-section">
-              <div className="modal-section-title">{g.title}</div>
-              <div className="shortcut-grid">
-                {g.items.map((item) => (
-                  <div key={item.label} className="shortcut-row">
-                    <div className="shortcut-keys">
-                      {item.keys.map((k, i) => (
-                        <span key={i} className="kbd">{k}</span>
-                      ))}
-                    </div>
-                    <div className="shortcut-label">{item.label}</div>
+        <div className="modal-body help-body">
+          <div className="modal-section">
+            <div className="modal-section-title">// GETTING STARTED</div>
+            <ol className="help-list">
+              <li><strong>Pick a template</strong> in the // TEMPLATES list on the right sidebar — or start blank.</li>
+              <li><strong>Set your aspect</strong> in // PROJECT SETTINGS (9:16 vertical, 16:9 wide, 1:1 square). All generation respects this.</li>
+              <li><strong>Click any section</strong> on the timeline. The scene editor opens as a modal with two sides — STILL on the left, MOTION on the right.</li>
+              <li><strong>Write a still prompt</strong>, pick a model, hit <span className="kbd">✦ Generate still</span>. Free Pollinations is the default; add a Replicate key for reliable Flux / SDXL.</li>
+              <li><strong>Write a motion prompt</strong>, pick Ken Burns (free) or Runway / Replicate motion (paid keys), hit <span className="kbd">✦ Generate motion</span>.</li>
+              <li><strong>Iterate</strong>: each section keeps multiple <em>versions</em> — try variants without losing the previous take.</li>
+              <li><strong>Render</strong> the whole thing as MP4 via <span className="kbd">⤓ Render MP4</span> when the timeline is ready.</li>
+            </ol>
+          </div>
+
+          <div className="modal-section">
+            <div className="modal-section-title">// TOOLS</div>
+            <dl className="help-defs">
+              <dt><span className="slot-icon">✎</span> // BRIEF</dt>
+              <dd>Project-wide visual direction (camera, lens, lighting, palette). Injected into every still prompt — set it once, every section inherits.</dd>
+              <dt><span className="slot-icon">◐</span> // GRADE</dt>
+              <dd>Final-pass color: exposure, contrast, warmth, crushed blacks. Applied via FFmpeg LUT at render time and exportable as a .cube file for Premiere / Resolve.</dd>
+              <dt><span className="slot-icon">♫</span> // MUSIC</dt>
+              <dd>Score for the whole project. Generate via ElevenLabs or Stable Audio, or <span className="kbd">▤ IMPORT</span> your own mp3/wav. Auto-ducks under VO at −6dB.</dd>
+              <dt><span className="slot-icon">T</span> // GRAPHIC STYLE</dt>
+              <dd>Font, color, and background for any title-card section. Pick from JetBrains Mono / Inter / Knewave.</dd>
+              <dt><span className="lib-tab-icon">⊞</span> // PROJECTS</dt>
+              <dd>Your saved projects. <span className="kbd">{mod} S</span> saves the current state; click a saved row to load it (the current project is auto-saved first).</dd>
+              <dt><span className="lib-tab-icon">⚀</span> // TEMPLATES</dt>
+              <dd>Starter timelines: Blank, Product Reveal, Title card, Tutorial 3-shot, Dark drop.</dd>
+            </dl>
+          </div>
+
+          <div className="modal-section">
+            <div className="modal-section-title">// IMPORT YOUR OWN MEDIA</div>
+            <ul className="help-list">
+              <li>Each clip card has a <span className="kbd">▤ IMPORT</span> chip — drop in an image to set the still or a video to bypass generation entirely.</li>
+              <li>The music bed has its own <span className="kbd">▤ IMPORT</span> — the filename becomes the track name.</li>
+              <li>VO segments get a <span className="kbd">▤ Import</span> action inside their editor — narrate yourself instead of generating.</li>
+            </ul>
+          </div>
+
+          <div className="modal-section">
+            <div className="modal-section-title">// PROVIDERS</div>
+            <dl className="help-defs">
+              <dt>Pollinations <span className="help-tag free">FREE</span></dt>
+              <dd>Free Flux stills. Often queued (1 request per IP) — falls back to Flux Schnell automatically if a Replicate key is configured.</dd>
+              <dt>Replicate <span className="help-tag">KEY</span></dt>
+              <dd>Flux 1.1 Pro, Flux Schnell, SDXL, Ideogram for stills; MiniMax, Kling, Pika, Luma for motion. ~$0.003–0.08 per still, ~$0.075–0.4 per motion second.</dd>
+              <dt>Runway <span className="help-tag">KEY</span></dt>
+              <dd>Gen-3 / Gen-4 motion. Best motion quality but hard-aspect-locked to specific resolutions. Calls go through a thin server proxy because Runway blocks browsers.</dd>
+              <dt>ElevenLabs <span className="help-tag">KEY</span></dt>
+              <dd>Voice generation for VO and music score generation.</dd>
+            </dl>
+            <p className="help-note">Keys live in your browser&apos;s localStorage. Nothing is proxied through any AI Cinema server (Runway aside, for CORS reasons). The app itself is completely free.</p>
+          </div>
+
+          <div className="modal-section">
+            <div className="modal-section-title">// TIPS</div>
+            <ul className="help-list">
+              <li><strong>Aspect ratio applies to new generation.</strong> Switching after generating doesn&apos;t reshape existing previews — you&apos;ll need to re-render any clip you want at the new aspect.</li>
+              <li><strong>Reference images flow into stills</strong> if the model supports init-image. SDXL does; the others ignore the reference. The <span className="kbd">→ ref hint</span> below the prompt is clickable to switch to SDXL.</li>
+              <li><strong>Continuity across cuts:</strong> set a section&apos;s INPUT to the previous section&apos;s last frame and use SDXL for visual carry-over.</li>
+              <li><strong>Cost cap</strong> warns at $0.50 per still — useful when you accidentally pick an expensive model.</li>
+              <li><strong>Everything persists</strong> in localStorage. Export your project JSON for portability or to share.</li>
+            </ul>
+          </div>
+
+          <div className="modal-section">
+            <div className="modal-section-title">// KEYBOARD SHORTCUTS</div>
+            <div className="help-shortcuts">
+              {shortcutGroups.map((g) => (
+                <div key={g.title} className="help-shortcut-group">
+                  <div className="help-shortcut-group-title">{g.title}</div>
+                  <div className="shortcut-grid">
+                    {g.items.map((item) => (
+                      <div key={item.label} className="shortcut-row">
+                        <div className="shortcut-keys">
+                          {item.keys.map((k, i) => (
+                            <span key={i} className="kbd">{k}</span>
+                          ))}
+                        </div>
+                        <div className="shortcut-label">{item.label}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
-          ))}
+            <p className="help-note">Shortcuts are ignored while you&apos;re typing in an input or textarea.</p>
+          </div>
         </div>
         <div className="modal-foot">
-          <span className="render-status">Bring your own model · cinematic by default</span>
+          <span className="render-status">Bring your own model · cinematic by default · free to use</span>
           <button type="button" className="btn primary" onClick={onClose}>OK</button>
         </div>
       </div>

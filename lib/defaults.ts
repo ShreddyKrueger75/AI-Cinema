@@ -202,6 +202,7 @@ export function createDefaultProject(): Project {
     sections,
     transitions,
     vo_segments,
+    graphics: [],
     music_track: DEFAULT_MUSIC,
     grade: DEFAULT_GRADE,
     brief: DEFAULT_BRIEF,

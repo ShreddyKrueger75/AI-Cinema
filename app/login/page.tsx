@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth, signIn } from "@/auth";
+import { isKvConfigured } from "@/lib/users";
 
 export default async function LoginPage({
   searchParams,
@@ -13,9 +14,17 @@ export default async function LoginPage({
   const params = await searchParams;
   const error = params.error;
   const callbackUrl = params.callbackUrl ?? "/";
+  const kvReady = isKvConfigured();
 
   async function doLogin(formData: FormData) {
     "use server";
+    if (!isKvConfigured()) {
+      redirect(
+        `/login?error=${encodeURIComponent(
+          "Cloud accounts are not configured. Set up Vercel KV to enable sign-in.",
+        )}&callbackUrl=${encodeURIComponent(callbackUrl)}`,
+      );
+    }
     const email = String(formData.get("email") ?? "");
     const password = String(formData.get("password") ?? "");
     try {
@@ -39,8 +48,7 @@ export default async function LoginPage({
       <div className="auth-card">
         <div className="auth-head">
           <div className="auth-wordmark">
-            <span className="painted">AI Cinema</span>
-            <span className="lockup">by Bloody Finger</span>
+            <span className="auth-brand">Cinema <span className="ai">AI</span></span>
           </div>
           <div className="auth-tagline">Cinematic video, made easy. Bring your own model.</div>
         </div>
@@ -48,6 +56,9 @@ export default async function LoginPage({
         <h1 className="auth-title">// SIGN IN</h1>
         <p className="auth-sub">The editor works without an account. Sign in to sync your library and projects across devices.</p>
 
+        {!kvReady ? (
+          <div className="auth-error">⚠ Cloud accounts are not configured. Set up Vercel KV to enable sign-in.</div>
+        ) : null}
         {error ? <div className="auth-error">⚠ {decodeURIComponent(error)}</div> : null}
 
         <form action={doLogin} className="auth-form">
