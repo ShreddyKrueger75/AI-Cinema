@@ -435,9 +435,9 @@ export default function HomePage() {
     () => projectOrder.map((id) => savedProjectsMap[id]).filter(Boolean),
     [projectOrder, savedProjectsMap],
   );
-  const savedSnapshot = savedProjectsMap[project.id];
-  const isDirty = !savedSnapshot || savedSnapshot.updated_at !== project.updated_at;
-  const isInLibrary = !!savedSnapshot;
+  const savedRecord = savedProjectsMap[project.id];
+  const isDirty = !savedRecord || savedRecord.updated_at !== project.updated_at;
+  const isInLibrary = !!savedRecord;
 
   const configuredKeyCountEarly = Object.values(providerKeys).filter((v) => v && v.trim()).length;
 
@@ -967,8 +967,8 @@ export default function HomePage() {
                 className={`save-pill ${isDirty ? "dirty" : "saved"}`}
                 title={
                   isDirty
-                    ? "Edited since last library snapshot — ⌘S to save again"
-                    : "In sync with the library snapshot"
+                    ? "Edited since last save — ⌘S to save again"
+                    : "In sync with the saved copy"
                 }
               >
                 {isDirty ? "● EDITED" : "✓ SAVED"}
@@ -1034,7 +1034,7 @@ export default function HomePage() {
                 }}
               >
                 <span className="tpl-name">＋ Save current</span>
-                <span className="tpl-desc">snapshot &ldquo;{project.name}&rdquo; · {project.duration_s.toFixed(1)}s · {project.sections.length} sections</span>
+                <span className="tpl-desc">save &ldquo;{project.name}&rdquo; · {project.duration_s.toFixed(1)}s · {project.sections.length} sections</span>
               </button>
               {projectStubs.length === 0 ? (
                 <div className="proj-empty">no saved projects yet</div>
@@ -1857,8 +1857,8 @@ export default function HomePage() {
             },
             {
               id: "save",
-              label: "Save snapshot to library",
-              keywords: "save snapshot library s",
+              label: "Save project to library",
+              keywords: "save project library s",
               run: () => { saveProjectToLibrary(project); toast.success("Saved to library", project.name); },
             },
             {
@@ -1944,9 +1944,9 @@ export default function HomePage() {
               saveProjectToLibrary(project);
               toast.success("Saved to library", project.name);
             }}
-            title="Save snapshot (⌘S)"
+            title="Save current project (⌘S)"
           >
-            <span className="lib-tab-icon" aria-hidden>⊞</span> Save current as snapshot
+            <span className="lib-tab-icon" aria-hidden>⊞</span> Save current project
           </button>
           <div className="lib-section-title"><span className="lib-section-icon" aria-hidden>●</span> // SAVED</div>
           {projectStubs.length === 0 ? (
@@ -1963,12 +1963,12 @@ export default function HomePage() {
                     aria-label={
                       isOpen
                         ? `${p.name} — currently loaded`
-                        : `Load ${p.name} snapshot — replaces current project`
+                        : `Load saved project ${p.name} — replaces current project`
                     }
                     title={
                       isOpen
                         ? "Currently loaded — edits flow into the live project"
-                        : "Click to load this snapshot · current project is auto-saved first"
+                        : "Click to load · current project is auto-saved first"
                     }
                     onClick={() => {
                       if (isOpen) {
@@ -1979,9 +1979,9 @@ export default function HomePage() {
                       const loaded = loadProjectFromLibrary(p.id);
                       if (loaded) {
                         setProject(loaded);
-                        toast.success("Loaded snapshot", `${p.name} · ${p.sections.length} sections`);
+                        toast.success("Loaded project", `${p.name} · ${p.sections.length} sections`);
                       } else {
-                        toast.error("Load failed", "Snapshot not found in library");
+                        toast.error("Load failed", "Saved project not found in library");
                       }
                     }}
                   >
@@ -5011,7 +5011,7 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
       items: [
         { keys: [`${mod} Z`], label: "Undo" },
         { keys: [`⇧ ${mod} Z`, `${mod} Y`], label: "Redo" },
-        { keys: [`${mod} S`], label: "Save snapshot to library" },
+        { keys: [`${mod} S`], label: "Save project to library" },
         { keys: ["D"], label: "Duplicate active section" },
         { keys: ["Del", "⌫"], label: "Remove active section" },
       ],
@@ -5069,7 +5069,7 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
               <dt><span className="slot-icon">T</span> // TITLE STYLE</dt>
               <dd>Font, color, and background for any title-card section. Pick from JetBrains Mono / Inter / Knewave.</dd>
               <dt><span className="lib-tab-icon">⊞</span> // PROJECTS</dt>
-              <dd>Your saved snapshots. <span className="kbd">{mod} S</span> saves the current state; click a saved row to load it (the current project is auto-snapshotted first).</dd>
+              <dd>Your saved projects. <span className="kbd">{mod} S</span> saves the current state; click a saved row to load it (the current project is auto-saved first).</dd>
               <dt><span className="lib-tab-icon">⚀</span> // TEMPLATES</dt>
               <dd>Starter timelines: Blank, Product Reveal, Title card, Tutorial 3-shot, Dark drop.</dd>
             </dl>
