@@ -22,6 +22,7 @@ export type Provider = {
   notes?: string;
   experimental?: boolean;
   optional?: boolean;
+  relayed?: boolean;
 };
 
 export const PROVIDERS: Provider[] = [
@@ -39,14 +40,16 @@ export const PROVIDERS: Provider[] = [
     surfaces: ["image", "motion"],
     signup_url: "https://replicate.com/account/api-tokens",
     key_prefix: "r8_",
-    notes: "Powers Flux 1.1 Pro, Flux Schnell, SDXL, Stable Audio",
+    notes: "Powers Flux 1.1 Pro, Flux Schnell, SDXL, Stable Audio. Relayed server-side (no CORS).",
+    relayed: true,
   },
   {
     id: "runway",
     name: "Runway",
     surfaces: ["motion"],
     signup_url: "https://app.runwayml.com/settings/api",
-    notes: "Gen-4 and Gen-3 img-to-video",
+    notes: "Gen-4 and Gen-3 img-to-video. Relayed server-side (no CORS).",
+    relayed: true,
   },
   {
     id: "elevenlabs",

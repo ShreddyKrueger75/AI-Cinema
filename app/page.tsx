@@ -19,6 +19,7 @@ import type {
   Transition,
   TransitionType,
   Version,
+  VOSegment,
 } from "@/lib/types";
 import { downloadProjectJSON, pickProjectJSONFile } from "@/lib/serialize";
 import {
@@ -1809,6 +1810,9 @@ export default function HomePage() {
               section={activeSection}
               project={project}
               providerKeys={providerKeys}
+              voJobs={voJobs}
+              setVoJobs={setVoJobs}
+              onGenerateVO={handleGenerateVO}
               onOpenProviders={() => setProvidersOpen(true)}
               onProviderKeyMissing={() => setProvidersOpen(true)}
             />
@@ -3451,12 +3455,20 @@ function FlowPanel({
   section,
   project,
   providerKeys,
+  voJobs,
+  setVoJobs,
+  onGenerateVO,
   onOpenProviders,
   onProviderKeyMissing,
 }: {
   section: Section;
   project: Project;
   providerKeys: Partial<Record<ProviderId, string>>;
+  voJobs: Record<string, { status: "running" | "error"; error?: string }>;
+  setVoJobs: React.Dispatch<
+    React.SetStateAction<Record<string, { status: "running" | "error"; error?: string }>>
+  >;
+  onGenerateVO: (segmentId: string) => void;
   onOpenProviders: () => void;
   onProviderKeyMissing: () => void;
 }) {
@@ -3473,6 +3485,9 @@ function FlowPanel({
   const addTitleVersion = useStore((s) => s.addTitleVersion);
   const removeTitleVersion = useStore((s) => s.removeTitleVersion);
   const updateSection = useStore((s) => s.updateSection);
+  const addVOSegment = useStore((s) => s.addVOSegment);
+  const updateVOSegment = useStore((s) => s.updateVOSegment);
+  const removeVOSegment = useStore((s) => s.removeVOSegment);
 
   const [versionMenuOpen, setVersionMenuOpen] = useState(false);
   const [durationMenuOpen, setDurationMenuOpen] = useState(false);
@@ -3504,6 +3519,28 @@ function FlowPanel({
     activeVersion && activeVersion.kind === "clip"
       ? jobs[motionJobKey(section.id, activeVersion.id)]
       : undefined;
+
+  const sectionEnd = startTime + section.duration_s;
+  const sectionVO = useMemo(
+    () =>
+      project.vo_segments.find(
+        (v) => v.start_s >= startTime - 0.01 && v.start_s < sectionEnd - 0.01,
+      ) ?? null,
+    [project.vo_segments, startTime, sectionEnd],
+  );
+  const addVOForSection = () => {
+    const before = useStore.getState().project.vo_segments.length;
+    addVOSegment();
+    const segs = useStore.getState().project.vo_segments;
+    const seg = segs[segs.length - 1];
+    if (segs.length > before && seg) {
+      updateVOSegment(seg.id, {
+        start_s: parseFloat(startTime.toFixed(2)),
+        duration_s: parseFloat(section.duration_s.toFixed(2)),
+        text: "",
+      });
+    }
+  };
 
   const modelHasKey = (modelId: string): boolean => {
     const pid = providerForModel(modelId);
@@ -3968,6 +4005,21 @@ function FlowPanel({
           onDismissStillError={dismissStillError}
           onDismissMotionError={dismissMotionError}
           onOpenProviders={onOpenProviders}
+          voSegment={sectionVO}
+          voJob={sectionVO ? voJobs[sectionVO.id] : undefined}
+          hasElevenLabsKey={!!providerKeys.elevenlabs}
+          onAddVO={addVOForSection}
+          onChangeVO={(patch) => sectionVO && updateVOSegment(sectionVO.id, patch)}
+          onGenerateVO={() => sectionVO && onGenerateVO(sectionVO.id)}
+          onRemoveVO={() => sectionVO && removeVOSegment(sectionVO.id)}
+          onDismissVOError={() =>
+            sectionVO &&
+            setVoJobs((j) => {
+              const next = { ...j };
+              delete next[sectionVO.id];
+              return next;
+            })
+          }
         />
       )}
     </div>
@@ -4104,6 +4156,14 @@ type ClipFlowBodyProps = {
   onDismissStillError: () => void;
   onDismissMotionError: () => void;
   onOpenProviders: () => void;
+  voSegment: VOSegment | null;
+  voJob?: { status: "running" | "error"; error?: string };
+  hasElevenLabsKey: boolean;
+  onAddVO: () => void;
+  onChangeVO: (patch: Partial<Omit<VOSegment, "id">>) => void;
+  onGenerateVO: () => void;
+  onRemoveVO: () => void;
+  onDismissVOError: () => void;
 };
 
 function ClipFlowBody({
@@ -4131,6 +4191,14 @@ function ClipFlowBody({
   onDismissStillError,
   onDismissMotionError,
   onOpenProviders,
+  voSegment,
+  voJob,
+  hasElevenLabsKey,
+  onAddVO,
+  onChangeVO,
+  onGenerateVO,
+  onRemoveVO,
+  onDismissVOError,
 }: ClipFlowBodyProps) {
   const stillCost = activeStill ? imageModelCost(activeStill.model) : 0;
   const motionCost = activeVersion
@@ -4630,6 +4698,128 @@ function ClipFlowBody({
                 : "✦ Generate motion"}
           </button>
         </div>
+      </div>
+
+      {/* STAGE 3 — VOICEOVER */}
+      <div className="stage">
+        <div className="stage-title"><span className="num">03</span><span className="stage-title-icon" aria-hidden>♪</span>VOICEOVER</div>
+
+        {voSegment ? (
+          <>
+            <Field label="Script">
+              <textarea
+                className="field-input tall"
+                rows={3}
+                value={voSegment.text}
+                onChange={(e) => onChangeVO({ text: e.target.value })}
+                placeholder="What the voice says over this clip"
+              />
+            </Field>
+            <div className="field-row two">
+              <Field label="Voice">
+                <div className="field-pill">
+                  <select
+                    value={voSegment.voice}
+                    onChange={(e) => onChangeVO({ voice: e.target.value })}
+                  >
+                    {voiceList().map((v) => (
+                      <option key={v.value} value={v.value}>{v.label}</option>
+                    ))}
+                  </select>
+                  <span className="caret">▾</span>
+                </div>
+              </Field>
+              <Field label="Timing">
+                <div className="field-input read">
+                  {voSegment.start_s.toFixed(1)}s · {voSegment.duration_s.toFixed(1)}s
+                </div>
+              </Field>
+            </div>
+
+            {voSegment.output_url ? (
+              <div className="vo-preview">
+                <Waveform
+                  url={voSegment.output_url}
+                  samples={96}
+                  height={28}
+                  color="var(--color-blood)"
+                />
+                <audio controls src={voSegment.output_url} className="vo-audio" />
+              </div>
+            ) : null}
+
+            {voJob?.status === "error" ? (
+              <div className="gen-err">
+                <span>{voJob.error}</span>
+                <button type="button" className="btn ghost" onClick={onDismissVOError}>Dismiss</button>
+              </div>
+            ) : null}
+
+            <div className="gen-row">
+              {!hasElevenLabsKey ? (
+                <button
+                  type="button"
+                  className="gen-cost warn gen-cost-link"
+                  onClick={onOpenProviders}
+                  title="Open Providers to add an ElevenLabs key"
+                >
+                  ⊘ Needs ElevenLabs key →
+                </button>
+              ) : (
+                <span className="gen-cost">ElevenLabs · ~$0.001 per char</span>
+              )}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  title="Import an audio file instead of generating"
+                  onClick={async () => {
+                    const file = await pickFile("audio/*");
+                    if (!file) return;
+                    const url = URL.createObjectURL(file);
+                    onChangeVO({ output_url: url });
+                    toast.success("VO imported", file.name);
+                  }}
+                >
+                  ▤ Import
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={onRemoveVO}
+                  title="Remove this voiceover segment"
+                >
+                  ✕ Remove
+                </button>
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={voJob?.status === "running" || !voSegment.text.trim()}
+                  onClick={hasElevenLabsKey ? onGenerateVO : onOpenProviders}
+                >
+                  {voJob?.status === "running"
+                    ? "● Generating…"
+                    : !hasElevenLabsKey
+                      ? "🔑 Add ElevenLabs key"
+                      : "⏵ Generate VO"}
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="vo-empty-state">
+            <p className="vo-empty-text">
+              No voiceover on this clip yet. Add one to write a script and have ElevenLabs voice it.
+            </p>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={onAddVO}
+            >
+              + Add voiceover
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -5143,7 +5333,7 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
               <dt>ElevenLabs <span className="help-tag">KEY</span></dt>
               <dd>Voice generation for VO and music score generation.</dd>
             </dl>
-            <p className="help-note">Keys live in your browser&apos;s localStorage. Nothing is proxied through any AI Cinema server (Runway aside, for CORS reasons). The app itself is completely free.</p>
+            <p className="help-note">Keys live in your browser&apos;s localStorage. ElevenLabs and Pollinations are called direct. Replicate and Runway block browser CORS, so their requests are relayed through our server — the key transits per request and is never stored or logged. The app itself is completely free.</p>
           </div>
 
           <div className="modal-section">
@@ -5221,8 +5411,10 @@ function ProvidersDialog({
 
         <div className="modal-body">
           <div className="providers-notice">
-            <strong>Zero-server stance.</strong> Your keys live in this browser&apos;s localStorage and
-            are never sent to any AI Cinema server. Export does not include keys.
+            <strong>Keys live in your browser&apos;s localStorage.</strong> Export does not include them.
+            ElevenLabs and Pollinations are called <em>direct</em> from the browser. <strong>Replicate</strong>
+            and <strong>Runway</strong> block cross-origin browser calls, so requests are <em>relayed</em>
+            through our server — the key transits in memory per request and is never stored or logged.
           </div>
 
           <div className="providers-list">
@@ -5240,6 +5432,7 @@ function ProvidersDialog({
                   keyPrefix={p.key_prefix}
                   storedKey={stored}
                   connected={connected}
+                  relayed={p.relayed}
                   onSetKey={(k) => onSetKey(p.id, k)}
                   onRemoveKey={() => onRemoveKey(p.id)}
                 />
@@ -5303,6 +5496,7 @@ function ProviderRow({
   keyPrefix,
   storedKey,
   connected,
+  relayed,
   onSetKey,
   onRemoveKey,
 }: {
@@ -5314,6 +5508,7 @@ function ProviderRow({
   keyPrefix?: string;
   storedKey: string;
   connected: boolean;
+  relayed?: boolean;
   onSetKey: (key: string) => void;
   onRemoveKey: () => void;
 }) {
@@ -5341,6 +5536,9 @@ function ProviderRow({
           <span className={`prov-dot ${connected ? "" : "warn"}`} />
           <span className="prov-name">{name}</span>
           <span className="prov-tag">{providerId}</span>
+          {relayed ? (
+            <span className="prov-relay" title="Calls are relayed through our server because this provider blocks browser CORS. Key transits in memory per request and is never stored.">RELAYED</span>
+          ) : null}
         </div>
         <div className="provider-surfaces">
           {surfaces.map((s) => (
