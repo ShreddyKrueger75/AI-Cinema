@@ -707,6 +707,59 @@ export default function HomePage() {
 
   const [voJobs, setVoJobs] = useState<Record<string, { status: "running" | "error"; error?: string }>>({});
   const [musicJob, setMusicJob] = useState<{ status: "running" | "error"; error?: string } | null>(null);
+  const [musicSegJobs, setMusicSegJobs] = useState<Record<string, { status: "running" | "error"; error?: string }>>({});
+
+  const handleGenerateMusicSegment = useCallback(
+    async (segmentId: string) => {
+      const seg = (project.music_segments ?? []).find((s) => s.id === segmentId);
+      if (!seg) return;
+      if (!seg.prompt.trim()) {
+        toast.warn("Add a music prompt first.");
+        return;
+      }
+      setMusicSegJobs((j) => ({ ...j, [segmentId]: { status: "running" } }));
+      try {
+        let dataUrl: string;
+        if (isReplicateMusicModel(seg.model)) {
+          const key = providerKeys.replicate;
+          if (!key) {
+            setMusicSegJobs((j) => { const next = { ...j }; delete next[segmentId]; return next; });
+            if (confirm("Stable Audio runs on Replicate. Open Providers to add a key?")) {
+              setProvidersOpen(true);
+            }
+            return;
+          }
+          const url = await runReplicateMusic({
+            model: seg.model,
+            prompt: seg.prompt,
+            durationSeconds: seg.duration_s,
+            apiToken: key,
+          });
+          dataUrl = await fetchAsDataUrl(url);
+        } else {
+          const key = providerKeys.elevenlabs;
+          if (!key) {
+            setMusicSegJobs((j) => { const next = { ...j }; delete next[segmentId]; return next; });
+            if (confirm("ElevenLabs needs an API key to generate music. Open Providers to add one?")) {
+              setProvidersOpen(true);
+            }
+            return;
+          }
+          dataUrl = await runElevenLabsMusic({
+            prompt: seg.prompt,
+            durationMs: Math.round(seg.duration_s * 1000),
+            apiKey: key,
+          });
+        }
+        updateMusicSegment(segmentId, { output_url: dataUrl });
+        setMusicSegJobs((j) => { const next = { ...j }; delete next[segmentId]; return next; });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setMusicSegJobs((j) => ({ ...j, [segmentId]: { status: "error", error: message } }));
+      }
+    },
+    [project.music_segments, providerKeys.replicate, providerKeys.elevenlabs, updateMusicSegment],
+  );
 
   const handleGenerateMusic = useCallback(async () => {
     const music = project.music_track;
@@ -1986,7 +2039,11 @@ export default function HomePage() {
               <MusicSegmentEditor
                 segment={seg}
                 projectDuration={project.duration_s}
+                job={musicSegJobs[seg.id]}
+                hasKey={!!providerKeys.elevenlabs || !!providerKeys.replicate}
                 onChange={(patch) => updateMusicSegment(seg.id, patch)}
+                onGenerate={() => handleGenerateMusicSegment(seg.id)}
+                onDismissError={() => setMusicSegJobs((j) => { const next = { ...j }; delete next[seg.id]; return next; })}
                 onRemove={() => { removeMusicSegment(seg.id); setEditingMusicId(null); }}
               />
             </div>
@@ -3983,12 +4040,20 @@ function VOSegmentEditor({
 function MusicSegmentEditor({
   segment,
   projectDuration,
+  job,
+  hasKey,
   onChange,
+  onGenerate,
+  onDismissError,
   onRemove,
 }: {
   segment: MusicSegment;
   projectDuration: number;
+  job?: { status: "running" | "error"; error?: string };
+  hasKey: boolean;
   onChange: (patch: Partial<Omit<MusicSegment, "id">>) => void;
+  onGenerate: () => void;
+  onDismissError: () => void;
   onRemove: () => void;
 }) {
   return (
@@ -4081,6 +4146,27 @@ function MusicSegmentEditor({
           <audio src={segment.output_url} controls className="vo-audio" />
         </Field>
       ) : null}
+      {job?.status === "error" ? (
+        <div className="vo-error">
+          <span>Error: {job.error}</span>
+          <button type="button" className="btn ghost vo-error-dismiss" onClick={onDismissError}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+      <div className="gen-row">
+        <span className={`gen-cost ${!hasKey ? "warn" : ""}`}>
+          {!hasKey ? "⊘ ElevenLabs or Replicate key required" : `${segment.model} · ${segment.duration_s.toFixed(0)}s`}
+        </span>
+        <button
+          type="button"
+          className="btn primary"
+          disabled={job?.status === "running"}
+          onClick={onGenerate}
+        >
+          {job?.status === "running" ? "● Generating…" : "⏵ Generate music"}
+        </button>
+      </div>
     </div>
   );
 }
