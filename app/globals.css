@@ -1270,19 +1270,19 @@ button.clip-version:hover { border-color: var(--color-blood-faint); }
   top: 50%;
   left: 0;
   transform: translate(-50%, -50%);
-  width: 16px;
-  height: 16px;
+  width: 32px;
+  height: 32px;
   background: var(--color-bg);
-  border: 1px solid var(--color-line-strong);
+  border: 2px solid var(--color-line-strong);
   display: grid;
   place-items: center;
-  font-size: 8px;
+  font-size: 13px;
   color: var(--color-fg-muted);
-  z-index: 2;
+  z-index: 3;
   cursor: pointer;
 }
-.trans-marker:hover { border-color: var(--color-blood); color: var(--color-blood); }
-.trans-marker[data-type="fade"] { color: var(--color-blood-faint); }
+.trans-marker:hover { border-color: var(--color-blood); color: var(--color-blood); background: var(--color-blood-soft); }
+.trans-marker[data-type="fade"] { color: var(--color-blood-faint); border-color: var(--color-blood-faint); }
 
 /* AUDIO TRACKS */
 .audio-row { display: grid; grid-template-columns: repeat(6, 1fr); position: relative; }
@@ -2086,7 +2086,7 @@ textarea.inline-edit { resize: vertical; min-height: 60px; width: 100%; padding:
   .clip-actions { gap: 6px; padding: 5px; }
   .clip-act { min-width: 44px; min-height: 36px; padding: 8px 12px; font-size: 14px; }
   .clip-insert-btn { width: 28px; height: 28px; font-size: 16px; opacity: 1; }
-  button.trans-marker { width: 22px; height: 22px; font-size: 11px; }
+  button.trans-marker { width: 26px; height: 26px; font-size: 11px; }
 }
 
 .clip-resize-handle {

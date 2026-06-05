@@ -1342,7 +1342,7 @@ export default function HomePage() {
               onClick={() => addClipSection(null)}
               title="Add a new scene"
             >
-              + SCENE
+              + VIDEO
             </button>
           </div>
         </div>
@@ -1773,15 +1773,6 @@ export default function HomePage() {
                 Final pass · <strong>{project.grade?.name ?? "—"}</strong>
                 {project.grade ? ` · ${gradeDescriptor(project.grade)}` : ""}
               </span>
-            </button>
-            <button
-              type="button"
-              className="grade-export"
-              onClick={handleExportLUT}
-              disabled={!project.grade}
-              title="Export grade as .cube LUT"
-            >
-              ⤓ EXPORT LUT
             </button>
           </div>
         </div>
