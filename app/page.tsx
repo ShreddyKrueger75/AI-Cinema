@@ -896,6 +896,7 @@ export default function HomePage() {
         if (providersOpen) { setProvidersOpen(false); return; }
         if (musicPanelOpen) { setMusicPanelOpen(false); return; }
         if (editingVOId) { setEditingVOId(null); return; }
+        if (editingGraphicId) { setEditingGraphicId(null); return; }
         if (lookOpen) { setLookOpen(null); return; }
         if (activeSectionId) {
           if (editable) (e.target as HTMLElement)?.blur?.();
@@ -1424,24 +1425,6 @@ export default function HomePage() {
           )}
         </div>
 
-        {editingGraphicId ? (() => {
-          const eg = (project.graphics ?? []).find((g) => g.id === editingGraphicId);
-          if (!eg) return null;
-          return (
-            <div className="graphic-inline-editor">
-              <GraphicOverlayEditor
-                overlay={eg}
-                projectDuration={project.duration_s}
-                onChange={(patch) => updateGraphic(eg.id, patch)}
-                onRemove={() => {
-                  removeGraphic(eg.id);
-                  setEditingGraphicId(null);
-                }}
-              />
-            </div>
-          );
-        })() : null}
-
         <div className="tl-row-label">
           // VIDEO
           <div className="tl-row-actions">
@@ -1938,6 +1921,26 @@ export default function HomePage() {
           </div>
         </div>
       ) : null}
+
+      {editingGraphicId ? (() => {
+        const eg = (project.graphics ?? []).find((g) => g.id === editingGraphicId);
+        if (!eg) return null;
+        return (
+          <div className="flow-modal-overlay" onClick={() => setEditingGraphicId(null)}>
+            <div className="flow-modal" onClick={(e) => e.stopPropagation()}>
+              <GraphicOverlayEditor
+                overlay={eg}
+                projectDuration={project.duration_s}
+                onChange={(patch) => updateGraphic(eg.id, patch)}
+                onRemove={() => {
+                  removeGraphic(eg.id);
+                  setEditingGraphicId(null);
+                }}
+              />
+            </div>
+          </div>
+        );
+      })() : null}
 
       {editingVOId ? (() => {
         const seg = project.vo_segments.find((s) => s.id === editingVOId);
