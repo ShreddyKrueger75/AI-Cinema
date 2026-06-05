@@ -351,7 +351,24 @@ export const useLibrary = create<LibraryState>()(
       name: STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
-      version: 1,
+      version: 2,
+      // Built-in presets ship with the code; user-saved presets ship with the
+      // user. On a version bump we replace the built-ins from code (so new
+      // fields like `saturation: -65` on Film Noir actually reach existing
+      // users) while preserving anything the user saved themselves.
+      migrate: (persisted, version) => {
+        const p = (persisted ?? {}) as Partial<LibraryState>;
+        if (version < 2) {
+          return {
+            ...p,
+            briefs: [...BUILT_IN_BRIEFS, ...((p.briefs ?? []).filter((b) => !b.built_in))],
+            grades: [...BUILT_IN_GRADES, ...((p.grades ?? []).filter((g) => !g.built_in))],
+            music:  [...BUILT_IN_MUSIC,  ...((p.music  ?? []).filter((m) => !m.built_in))],
+            titles: [...BUILT_IN_TITLES, ...((p.titles ?? []).filter((t) => !t.built_in))],
+          } as LibraryState;
+        }
+        return p as LibraryState;
+      },
     },
   ),
 );
