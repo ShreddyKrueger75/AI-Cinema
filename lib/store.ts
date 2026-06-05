@@ -8,6 +8,7 @@ import type {
   ClipVersion,
   GraphicOverlay,
   Grade,
+  MusicSegment,
   MusicTrack,
   Project,
   Section,
@@ -76,6 +77,10 @@ export type StoreState = {
   addVOSegment: () => void;
   updateVOSegment: (id: string, patch: Partial<Omit<VOSegment, "id">>) => void;
   removeVOSegment: (id: string) => void;
+
+  addMusicSegment: () => void;
+  updateMusicSegment: (id: string, patch: Partial<Omit<MusicSegment, "id">>) => void;
+  removeMusicSegment: (id: string) => void;
 
   addGraphic: (atSeconds?: number) => void;
   updateGraphic: (id: string, patch: Partial<Omit<GraphicOverlay, "id">>) => void;
@@ -632,6 +637,44 @@ export const useStore = create<StoreState>()(
           project: touch({
             ...state.project,
             vo_segments: state.project.vo_segments.filter((v) => v.id !== id),
+          }),
+        })),
+
+      addMusicSegment: () =>
+        set((state) => {
+          const existing = state.project.music_segments ?? [];
+          const last = existing[existing.length - 1];
+          const start_s = last ? Math.min(state.project.duration_s, last.start_s + last.duration_s) : 0;
+          const remaining = Math.max(1, state.project.duration_s - start_s);
+          const seg: MusicSegment = {
+            id: newId("music"),
+            name: `Track ${existing.length + 1}`,
+            prompt: "cinematic build, low piano, distant strings",
+            model: "elevenlabs-music",
+            start_s,
+            duration_s: Math.min(remaining, state.project.duration_s),
+          };
+          return {
+            project: touch({
+              ...state.project,
+              music_segments: [...existing, seg],
+            }),
+          };
+        }),
+
+      updateMusicSegment: (id, patch) =>
+        set((state) => ({
+          project: touch({
+            ...state.project,
+            music_segments: (state.project.music_segments ?? []).map((v) => (v.id === id ? { ...v, ...patch } : v)),
+          }),
+        })),
+
+      removeMusicSegment: (id) =>
+        set((state) => ({
+          project: touch({
+            ...state.project,
+            music_segments: (state.project.music_segments ?? []).filter((v) => v.id !== id),
           }),
         })),
 

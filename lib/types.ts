@@ -73,6 +73,18 @@ export type MusicTrack = {
   prompt: string;
   model: string;
   output_url?: string;
+  start_s?: number;
+  duration_s?: number;
+};
+
+export type MusicSegment = {
+  id: string;
+  name: string;
+  prompt: string;
+  model: string;
+  start_s: number;
+  duration_s: number;
+  output_url?: string;
 };
 
 export type Grade = {
@@ -126,6 +138,7 @@ export type Project = {
   sections: Section[];
   transitions: Transition[];
   vo_segments: VOSegment[];
+  music_segments?: MusicSegment[];
   graphics: GraphicOverlay[];
   music_track?: MusicTrack;
   grade?: Grade;

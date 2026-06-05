@@ -1277,9 +1277,7 @@ export default function HomePage() {
         </div>
         <div className="graphics-overlay-row">
           {(project.graphics ?? []).length === 0 ? (
-            <div className="graphics-empty">
-              no graphics yet · graphics overlay on top of clips
-            </div>
+            <div className="graphics-empty" />
           ) : (
             (project.graphics ?? []).map((g) => {
               const total = Math.max(0.01, project.duration_s);
@@ -1671,18 +1669,6 @@ export default function HomePage() {
               </div>
             );
           })}
-        </div>
-
-        <div className="timeline-add-row">
-          <span className="popover-anchor">
-            <button
-              type="button"
-              className="timeline-add"
-              onClick={() => addClipSection(null)}
-            >
-              + Add scene
-            </button>
-          </span>
         </div>
 
         <div className="tl-row-label">
