@@ -93,6 +93,66 @@ function touch(project: Project): Project {
   return { ...project, updated_at: new Date().toISOString() };
 }
 
+// One-time migration: convert legacy title sections (which used to live in
+// the VIDEO row) into a clip placeholder + a graphic overlay at the same time
+// slot. Keeps the timeline length intact and pulls the text into the GRAPHICS
+// row where it belongs now.
+function migrateTitleSectionsToGraphics(project: Project): Project {
+  const hasTitleSections = project.sections.some((s) => s.type === "title");
+  if (!hasTitleSections) return project;
+  const existingGraphics = project.graphics ?? [];
+  const newGraphics: GraphicOverlay[] = [];
+  let cursor = 0;
+  const newSections: Section[] = project.sections.map((section) => {
+    const startS = cursor;
+    cursor += section.duration_s;
+    if (section.type !== "title") return section;
+    const titleVer = section.versions.find((v) => v.kind === "title");
+    const text = titleVer && titleVer.kind === "title" ? titleVer.text : section.title;
+    newGraphics.push({
+      id: `graphic_${section.id}`,
+      label: section.title || text,
+      text,
+      start_s: startS,
+      duration_s: section.duration_s,
+      position: "center",
+    });
+    const stillId = `${section.id}_still`;
+    const versionId = `${section.id}_v1`;
+    const still: Still = {
+      id: stillId,
+      label: "Hero hold",
+      image_prompt: "cinematic backdrop, restrained lighting, hero hold for graphic",
+      model: "pollinations",
+      input_ref: null,
+    };
+    const version: ClipVersion = {
+      id: versionId,
+      kind: "clip",
+      label: "hero hold",
+      still_ref: stillId,
+      motion: { prompt: "static, slow breathing focus", model: "ken-burns", duration_s: section.duration_s },
+    };
+    return {
+      id: section.id,
+      index: section.index,
+      type: "clip",
+      title: section.title,
+      duration_s: section.duration_s,
+      stills: [still],
+      active_still_id: stillId,
+      versions: [version],
+      active_version_id: versionId,
+    };
+  });
+  return {
+    ...project,
+    sections: newSections,
+    graphics: [...existingGraphics, ...newGraphics],
+    updated_at: new Date().toISOString(),
+  };
+}
+
 function mapSection(project: Project, sectionId: string, fn: (s: Section) => Section): Project {
   return touch({
     ...project,
@@ -726,10 +786,13 @@ export const useStore = create<StoreState>()(
       name: STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
-      version: 3,
+      version: 4,
       migrate: (persisted, version) => {
         const next = (persisted ?? {}) as Partial<StoreState>;
         if (version < 3) next.activeSectionId = null;
+        if (version < 4 && next.project) {
+          next.project = migrateTitleSectionsToGraphics(next.project);
+        }
         return next as StoreState;
       },
     },
