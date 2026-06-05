@@ -39,15 +39,16 @@ a { color: inherit; text-decoration: none; }
 /* ───────────── WORKSPACE (3-column Premiere-style) ───────────── */
 .workspace {
   display: grid;
-  grid-template-columns: 280px 340px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   grid-template-rows: auto auto auto auto auto auto auto;
   grid-template-areas:
-    "top      top      top"
-    "hero     hero     hero"
-    "head     head     head"
-    "library  settings stage"
-    "tl       tl       tl"
-    "foot     foot     foot";
+    "top      top"
+    "hero     hero"
+    "head     head"
+    "library  settings"
+    "library  stage"
+    "tl       tl"
+    "foot     foot";
   gap: 16px;
   padding-bottom: 60px;
 }
@@ -146,36 +147,47 @@ a { color: inherit; text-decoration: none; }
 .project-settings {
   border: 1px solid var(--color-line);
   background: var(--color-surface);
-  padding: 14px 16px 8px;
+  padding: 10px 14px;
   display: flex;
-  flex-direction: column;
-  gap: 14px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
 }
 .project-settings-title {
-  font-size: 11px;
+  font-size: 9px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--color-fg-muted);
+  color: var(--color-fg-faint);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .project-settings .stage-meta-aspect {
   display: flex;
-  gap: 6px;
-  width: 100%;
+  gap: 4px;
+  flex-shrink: 0;
 }
-.project-settings .aspect-pill { flex: 1; justify-content: center; }
+.project-settings .aspect-pill {
+  flex: none;
+  padding: 4px 10px;
+}
 .project-settings .lookbar {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 1px;
   background: var(--color-line);
-  margin: 4px -16px 0;
+  flex-shrink: 0;
 }
 .project-settings .lookbar .slot { background: var(--color-surface); }
+.project-settings .lookbar .slot .slot-btn { padding: 6px 14px; }
 .project-settings .lookbar .popover.look-popover {
-  left: calc(100% + 6px);
-  top: 0;
-  right: auto;
+  left: 0;
+  top: calc(100% + 6px);
   min-width: 380px;
+}
+.project-settings .stage-controls {
+  flex: 1;
+  min-width: 200px;
 }
 
 /* Right-side library sidebar */
@@ -322,18 +334,15 @@ a { color: inherit; text-decoration: none; }
       "top"
       "hero"
       "head"
-      "stage"
       "settings"
+      "stage"
       "tl"
       "library"
       "foot";
   }
   .hero-brand { font-size: 40px; }
   .workspace-library { min-height: 240px; max-height: none; }
-  .project-settings .lookbar .popover.look-popover {
-    left: 0;
-    top: calc(100% + 6px);
-  }
+  .project-settings { flex-wrap: wrap; }
 }
 @media (max-width: 600px) {
   .hero { flex-direction: column; gap: 12px; align-items: flex-start; }
@@ -931,6 +940,29 @@ button {
   color: var(--color-blood);
   border-color: var(--color-blood-faint);
   background: var(--color-blood-soft);
+  outline: none;
+}
+.tl-row-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.tl-row-add-btn {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-bg);
+  background: var(--color-blood);
+  border: 1px solid var(--color-blood);
+  padding: 3px 10px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: opacity .12s;
+}
+.tl-row-add-btn:hover,
+.tl-row-add-btn:focus-visible {
+  opacity: 0.85;
   outline: none;
 }
 .graphics-overlay-row {
