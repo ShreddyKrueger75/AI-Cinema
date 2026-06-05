@@ -1114,27 +1114,6 @@ export default function HomePage() {
           </div>
         </div>
         <div className="project-actions">
-          <button
-            type="button"
-            className="btn ghost"
-            onClick={handleUndo}
-            disabled={historyPastLen === 0}
-            title="Undo (⌘Z)"
-            aria-label="Undo (⌘Z)"
-          >
-            ↶
-          </button>
-          <button
-            type="button"
-            className="btn ghost"
-            onClick={handleRedo}
-            disabled={historyFutureLen === 0}
-            title="Redo (⇧⌘Z)"
-            aria-label="Redo (⇧⌘Z)"
-          >
-            ↷
-          </button>
-          <button type="button" className="btn ghost" onClick={handleReset} title="Reset to defaults">↺ Reset</button>
           <button type="button" className="btn ghost" onClick={handleImport} title="Import a project JSON" aria-label="Import project JSON">⇧ Import</button>
           <button type="button" className="btn ghost" onClick={handleExport} title="Export the project as JSON" aria-label="Export project JSON">⇩ Export</button>
           <button
@@ -1213,56 +1192,6 @@ export default function HomePage() {
             onClose={() => setLookOpen(null)}
           />
         </LookSlot>
-        <LookSlot
-          label="// MUSIC"
-          icon="♫"
-          value={project.music_track?.name}
-          open={lookOpen === "music"}
-          onToggle={() => setLookOpen(lookOpen === "music" ? null : "music")}
-        >
-          <MusicEditor
-            music={project.music_track}
-            library={libraryMusic}
-            job={musicJob ?? undefined}
-            hasKey={!!providerKeys.elevenlabs}
-            durationS={project.duration_s}
-            onChange={updateMusic}
-            onLoadPreset={(item) => {
-              const { id: _drop, ...rest } = item;
-              updateMusic(rest);
-            }}
-            onSaveAs={(name) => project.music_track && saveMusicToLibrary(project.music_track, name)}
-            onRemovePreset={(id) => removeLibraryItem("music", id)}
-            onRenamePreset={(id, name) => renameLibraryItem("music", id, name)}
-            onGenerate={handleGenerateMusic}
-            onDismissError={() => setMusicJob(null)}
-            onClose={() => setLookOpen(null)}
-          />
-        </LookSlot>
-        <LookSlot
-          label="// GRAPHIC STYLE"
-          icon="T"
-          value={project.title_settings?.name}
-          open={lookOpen === "title"}
-          onToggle={() => setLookOpen(lookOpen === "title" ? null : "title")}
-          alignRight
-        >
-          <TitleStyleEditor
-            style={project.title_settings}
-            library={libraryTitles}
-            onChange={updateTitleStyle}
-            onLoadPreset={(item) => {
-              const { id: _drop, ...rest } = item;
-              updateTitleStyle(rest);
-            }}
-            onSaveAs={(name) =>
-              project.title_settings && saveTitleToLibrary(project.title_settings, name)
-            }
-            onRemovePreset={(id) => removeLibraryItem("title", id)}
-            onRenamePreset={(id, name) => renameLibraryItem("title", id, name)}
-            onClose={() => setLookOpen(null)}
-          />
-        </LookSlot>
         </div>
         <StageControls
           project={project}
@@ -1285,9 +1214,6 @@ export default function HomePage() {
       <div className="timeline-wrap">
         <div className="tl-label">
           <span>// TIMELINE</span>
-          <span>
-            Click a clip · ◇ for transitions · Space play · click ruler to seek
-          </span>
         </div>
         {playPosition !== null ? (
           <div
@@ -1660,16 +1586,6 @@ export default function HomePage() {
                     >
                       Clip
                     </button>
-                    <button
-                      type="button"
-                      className="menu-item"
-                      onClick={() => {
-                        addTitleSection(section.id);
-                        setInsertAfterId(null);
-                      }}
-                    >
-                      Graphic
-                    </button>
                   </Popover>
                 </span>
                 <div className="clip-actions">
@@ -1734,37 +1650,15 @@ export default function HomePage() {
             <button
               type="button"
               className="timeline-add"
-              onClick={() => setAddMenuOpen((o) => !o)}
+              onClick={() => addClipSection(null)}
             >
-              + Add section
+              + Add scene
             </button>
-            <Popover open={addMenuOpen} onClose={() => setAddMenuOpen(false)} className="menu">
-              <button
-                type="button"
-                className="menu-item"
-                onClick={() => {
-                  addClipSection(null);
-                  setAddMenuOpen(false);
-                }}
-              >
-                Clip
-              </button>
-              <button
-                type="button"
-                className="menu-item"
-                onClick={() => {
-                  addTitleSection(null);
-                  setAddMenuOpen(false);
-                }}
-              >
-                Graphic
-              </button>
-            </Popover>
           </span>
         </div>
 
-        <div className="audio-row vo-row" style={{ marginTop: 14 }}>
-          <div className="track-label">VO</div>
+        <div className="tl-row-label">// VO</div>
+        <div className="audio-row vo-row">
           <VOTrack
             segments={project.vo_segments}
             duration={project.duration_s}
@@ -1780,8 +1674,8 @@ export default function HomePage() {
           />
         </div>
 
-        <div className="audio-row" style={{ marginTop: 8 }}>
-          <div className="track-label">MUSIC</div>
+        <div className="tl-row-label">// MUSIC</div>
+        <div className="audio-row">
           <div className={`music-bed ${project.music_track?.output_url ? "voiced" : ""}`}>
             <button
               type="button"
@@ -1856,9 +1750,6 @@ export default function HomePage() {
               section={activeSection}
               project={project}
               providerKeys={providerKeys}
-              voJobs={voJobs}
-              setVoJobs={setVoJobs}
-              onGenerateVO={handleGenerateVO}
               onOpenProviders={() => setProvidersOpen(true)}
               onProviderKeyMissing={() => setProvidersOpen(true)}
             />
@@ -3631,20 +3522,12 @@ function FlowPanel({
   section,
   project,
   providerKeys,
-  voJobs,
-  setVoJobs,
-  onGenerateVO,
   onOpenProviders,
   onProviderKeyMissing,
 }: {
   section: Section;
   project: Project;
   providerKeys: Partial<Record<ProviderId, string>>;
-  voJobs: Record<string, { status: "running" | "error"; error?: string }>;
-  setVoJobs: React.Dispatch<
-    React.SetStateAction<Record<string, { status: "running" | "error"; error?: string }>>
-  >;
-  onGenerateVO: (segmentId: string) => void;
   onOpenProviders: () => void;
   onProviderKeyMissing: () => void;
 }) {
@@ -3661,9 +3544,6 @@ function FlowPanel({
   const addTitleVersion = useStore((s) => s.addTitleVersion);
   const removeTitleVersion = useStore((s) => s.removeTitleVersion);
   const updateSection = useStore((s) => s.updateSection);
-  const addVOSegment = useStore((s) => s.addVOSegment);
-  const updateVOSegment = useStore((s) => s.updateVOSegment);
-  const removeVOSegment = useStore((s) => s.removeVOSegment);
 
   const [versionMenuOpen, setVersionMenuOpen] = useState(false);
   const [durationMenuOpen, setDurationMenuOpen] = useState(false);
@@ -3695,28 +3575,6 @@ function FlowPanel({
     activeVersion && activeVersion.kind === "clip"
       ? jobs[motionJobKey(section.id, activeVersion.id)]
       : undefined;
-
-  const sectionEnd = startTime + section.duration_s;
-  const sectionVO = useMemo(
-    () =>
-      project.vo_segments.find(
-        (v) => v.start_s >= startTime - 0.01 && v.start_s < sectionEnd - 0.01,
-      ) ?? null,
-    [project.vo_segments, startTime, sectionEnd],
-  );
-  const addVOForSection = () => {
-    const before = useStore.getState().project.vo_segments.length;
-    addVOSegment();
-    const segs = useStore.getState().project.vo_segments;
-    const seg = segs[segs.length - 1];
-    if (segs.length > before && seg) {
-      updateVOSegment(seg.id, {
-        start_s: parseFloat(startTime.toFixed(2)),
-        duration_s: parseFloat(section.duration_s.toFixed(2)),
-        text: "",
-      });
-    }
-  };
 
   const modelHasKey = (modelId: string): boolean => {
     const pid = providerForModel(modelId);
@@ -4193,21 +4051,6 @@ function FlowPanel({
           onDismissStillError={dismissStillError}
           onDismissMotionError={dismissMotionError}
           onOpenProviders={onOpenProviders}
-          voSegment={sectionVO}
-          voJob={sectionVO ? voJobs[sectionVO.id] : undefined}
-          hasElevenLabsKey={!!providerKeys.elevenlabs}
-          onAddVO={addVOForSection}
-          onChangeVO={(patch) => sectionVO && updateVOSegment(sectionVO.id, patch)}
-          onGenerateVO={() => sectionVO && onGenerateVO(sectionVO.id)}
-          onRemoveVO={() => sectionVO && removeVOSegment(sectionVO.id)}
-          onDismissVOError={() =>
-            sectionVO &&
-            setVoJobs((j) => {
-              const next = { ...j };
-              delete next[sectionVO.id];
-              return next;
-            })
-          }
         />
       )}
     </div>
@@ -4344,14 +4187,6 @@ type ClipFlowBodyProps = {
   onDismissStillError: () => void;
   onDismissMotionError: () => void;
   onOpenProviders: () => void;
-  voSegment: VOSegment | null;
-  voJob?: { status: "running" | "error"; error?: string };
-  hasElevenLabsKey: boolean;
-  onAddVO: () => void;
-  onChangeVO: (patch: Partial<Omit<VOSegment, "id">>) => void;
-  onGenerateVO: () => void;
-  onRemoveVO: () => void;
-  onDismissVOError: () => void;
 };
 
 function ClipFlowBody({
@@ -4379,14 +4214,6 @@ function ClipFlowBody({
   onDismissStillError,
   onDismissMotionError,
   onOpenProviders,
-  voSegment,
-  voJob,
-  hasElevenLabsKey,
-  onAddVO,
-  onChangeVO,
-  onGenerateVO,
-  onRemoveVO,
-  onDismissVOError,
 }: ClipFlowBodyProps) {
   const stillCost = activeStill ? imageModelCost(activeStill.model) : 0;
   const motionCost = activeVersion
@@ -4886,128 +4713,6 @@ function ClipFlowBody({
                 : "✦ Generate motion"}
           </button>
         </div>
-      </div>
-
-      {/* STAGE 3 — VOICEOVER */}
-      <div className="stage">
-        <div className="stage-title"><span className="num">03</span><span className="stage-title-icon" aria-hidden>♪</span>VOICEOVER</div>
-
-        {voSegment ? (
-          <>
-            <Field label="Script">
-              <textarea
-                className="field-input tall"
-                rows={3}
-                value={voSegment.text}
-                onChange={(e) => onChangeVO({ text: e.target.value })}
-                placeholder="What the voice says over this clip"
-              />
-            </Field>
-            <div className="field-row two">
-              <Field label="Voice">
-                <div className="field-pill">
-                  <select
-                    value={voSegment.voice}
-                    onChange={(e) => onChangeVO({ voice: e.target.value })}
-                  >
-                    {voiceList().map((v) => (
-                      <option key={v.value} value={v.value}>{v.label}</option>
-                    ))}
-                  </select>
-                  <span className="caret">▾</span>
-                </div>
-              </Field>
-              <Field label="Timing">
-                <div className="field-input read">
-                  {voSegment.start_s.toFixed(1)}s · {voSegment.duration_s.toFixed(1)}s
-                </div>
-              </Field>
-            </div>
-
-            {voSegment.output_url ? (
-              <div className="vo-preview">
-                <Waveform
-                  url={voSegment.output_url}
-                  samples={96}
-                  height={28}
-                  color="var(--color-blood)"
-                />
-                <audio controls src={voSegment.output_url} className="vo-audio" />
-              </div>
-            ) : null}
-
-            {voJob?.status === "error" ? (
-              <div className="gen-err">
-                <span>{voJob.error}</span>
-                <button type="button" className="btn ghost" onClick={onDismissVOError}>Dismiss</button>
-              </div>
-            ) : null}
-
-            <div className="gen-row">
-              {!hasElevenLabsKey ? (
-                <button
-                  type="button"
-                  className="gen-cost warn gen-cost-link"
-                  onClick={onOpenProviders}
-                  title="Open Providers to add an ElevenLabs key"
-                >
-                  ⊘ Needs ElevenLabs key →
-                </button>
-              ) : (
-                <span className="gen-cost">ElevenLabs · ~$0.001 per char</span>
-              )}
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  title="Import an audio file instead of generating"
-                  onClick={async () => {
-                    const file = await pickFile("audio/*");
-                    if (!file) return;
-                    const url = URL.createObjectURL(file);
-                    onChangeVO({ output_url: url });
-                    toast.success("VO imported", file.name);
-                  }}
-                >
-                  ▤ Import
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={onRemoveVO}
-                  title="Remove this voiceover segment"
-                >
-                  ✕ Remove
-                </button>
-                <button
-                  type="button"
-                  className="btn primary"
-                  disabled={voJob?.status === "running" || !voSegment.text.trim()}
-                  onClick={hasElevenLabsKey ? onGenerateVO : onOpenProviders}
-                >
-                  {voJob?.status === "running"
-                    ? "● Generating…"
-                    : !hasElevenLabsKey
-                      ? "🔑 Add ElevenLabs key"
-                      : "⏵ Generate VO"}
-                </button>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="vo-empty-state">
-            <p className="vo-empty-text">
-              No voiceover on this clip yet. Add one to write a script and have ElevenLabs voice it.
-            </p>
-            <button
-              type="button"
-              className="btn primary"
-              onClick={onAddVO}
-            >
-              + Add voiceover
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
