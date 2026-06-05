@@ -125,6 +125,7 @@ export type GraphicOverlay = {
   color?: string;
   background_color?: string;
   position?: "top" | "center" | "bottom";
+  image_url?: string;
 };
 
 export type Project = {

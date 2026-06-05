@@ -1346,15 +1346,29 @@ export default function HomePage() {
             <button
               type="button"
               className="tl-row-import-btn"
-              title="Import a text file — its content becomes a graphic overlay"
+              title="Import an image (PNG/JPG/SVG/GIF/WebP) or text file as a graphic overlay"
               aria-label="Import graphic"
               onClick={async () => {
-                const file = await pickFile(".txt,text/plain");
+                const file = await pickFile("image/*,.txt,text/plain");
                 if (!file) return;
-                const text = await file.text();
+                const isImage = file.type.startsWith("image/") ||
+                  /\.(png|jpe?g|gif|svg|webp|avif|bmp|ico)$/i.test(file.name);
                 addGraphic(activeSectionStartS);
+                setEditingGraphicId(null);
                 const last = (useStore.getState().project.graphics ?? []).slice(-1)[0];
-                if (last) updateGraphic(last.id, { text: text.trim().slice(0, 200) });
+                if (last) {
+                  if (isImage) {
+                    const url = URL.createObjectURL(file);
+                    updateGraphic(last.id, {
+                      image_url: url,
+                      text: file.name.replace(/\.[^.]+$/, ""),
+                      label: file.name,
+                    });
+                  } else {
+                    const text = await file.text();
+                    updateGraphic(last.id, { text: text.trim().slice(0, 200), label: file.name });
+                  }
+                }
                 toast.success("Graphic imported", file.name);
               }}
             >
@@ -1442,9 +1456,13 @@ export default function HomePage() {
                 const isVideo = file.type.startsWith("video/");
                 const url = URL.createObjectURL(file);
                 const poster = isVideo ? await extractVideoPosterDataUrl(file) : null;
+                const videoDuration = isVideo
+                  ? await measureAudioDuration(url).catch(() => null)
+                  : null;
                 addClipSection(null);
                 useStore.getState().setActiveSection(null);
-                const sections = useStore.getState().project.sections;
+                const stateAfter = useStore.getState();
+                const sections = stateAfter.project.sections;
                 const last = sections[sections.length - 1];
                 if (!last) return;
                 if (isVideo) {
@@ -1456,7 +1474,24 @@ export default function HomePage() {
                     const still = last.stills.find((s) => s.id === last.active_still_id);
                     if (still) updateStill(last.id, still.id, { output_url: poster });
                   }
-                  toast.success("Video imported", `${file.name} · new scene`);
+                  if (videoDuration && Number.isFinite(videoDuration) && videoDuration > 0) {
+                    useStore.getState().updateSection(last.id, { duration_s: videoDuration });
+                    // The new section's start_s = sum of prior section durations.
+                    // Add the video's audio as a music segment at the same time slot.
+                    const priorSections = sections.slice(0, -1);
+                    const startS = priorSections.reduce((a, s) => a + s.duration_s, 0);
+                    addMusicSegment();
+                    const lastMusic = (useStore.getState().project.music_segments ?? []).slice(-1)[0];
+                    if (lastMusic) {
+                      updateMusicSegment(lastMusic.id, {
+                        output_url: url,
+                        name: file.name.replace(/\.[^.]+$/, "") + " (audio)",
+                        start_s: startS,
+                        duration_s: videoDuration,
+                      });
+                    }
+                  }
+                  toast.success("Video imported", `${file.name} · new scene with audio`);
                 } else {
                   const still = last.stills.find((s) => s.id === last.active_still_id);
                   if (still) {
@@ -1582,47 +1617,6 @@ export default function HomePage() {
                     </Popover>
                   </span>
                 ) : null}
-                <div className="clip-num-row">
-                  {section.type === "clip" ? (
-                    <button
-                      type="button"
-                      className="clip-import"
-                      title="Import an image (becomes the still) or a video (becomes the rendered clip)"
-                      aria-label={`Import media into ${section.title}`}
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        const file = await pickFile("image/*,video/*");
-                        if (!file) return;
-                        const isVid = file.type.startsWith("video/");
-                        const url = URL.createObjectURL(file);
-                        const poster = isVid ? await extractVideoPosterDataUrl(file) : null;
-                        if (isVid) {
-                          const ver = section.versions.find((v) => v.id === section.active_version_id);
-                          if (ver && ver.kind === "clip") {
-                            updateClipVersion(section.id, ver.id, { output_url: url });
-                            if (poster) {
-                              const still = section.stills.find((s) => s.id === section.active_still_id);
-                              if (still) updateStill(section.id, still.id, { output_url: poster });
-                            }
-                            toast.success("Video imported", `${file.name} · clip ${section.index}`);
-                          } else {
-                            toast.error("Import failed", "Add a clip version first");
-                          }
-                        } else {
-                          const still = section.stills.find((s) => s.id === section.active_still_id);
-                          if (still) {
-                            updateStill(section.id, still.id, { output_url: url });
-                            toast.success("Image imported", `${file.name} · still ${section.index}`);
-                          } else {
-                            toast.error("Import failed", "Add a still first");
-                          }
-                        }
-                      }}
-                    >
-                      ▤ IMPORT
-                    </button>
-                  ) : null}
-                </div>
                 {(() => {
                   if (isTitle) {
                     return (
@@ -2855,7 +2849,11 @@ function PreviewStage({
                 fontFamily: g.font ?? project.title_settings?.font ?? "var(--font-display)",
               }}
             >
-              <span>{g.text}</span>
+              {g.image_url ? (
+                <img src={g.image_url} alt={g.text || g.label} className="stage-graphic-img" />
+              ) : (
+                <span>{g.text}</span>
+              )}
             </div>
           ))}
 

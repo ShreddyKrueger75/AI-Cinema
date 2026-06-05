@@ -1129,6 +1129,12 @@ button {
 .stage-graphic-overlay.pos-top { top: 4%; }
 .stage-graphic-overlay.pos-center { top: 50%; transform: translateY(-50%); }
 .stage-graphic-overlay.pos-bottom { bottom: 4%; }
+.stage-graphic-img {
+  display: inline-block;
+  max-width: 60%;
+  max-height: 60%;
+  object-fit: contain;
+}
 .clip {
   position: relative;
   padding: 16px 14px;
