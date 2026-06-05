@@ -531,7 +531,8 @@ export default function HomePage() {
   const [editingTransitionId, setEditingTransitionId] = useState<string | null>(null);
   const [editingGraphicId, setEditingGraphicId] = useState<string | null>(null);
   const [editingVOId, setEditingVOId] = useState<string | null>(null);
-  const [lookOpen, setLookOpen] = useState<null | "brief" | "grade" | "music" | "title">(null);
+  const [musicPanelOpen, setMusicPanelOpen] = useState(false);
+  const [lookOpen, setLookOpen] = useState<null | "brief" | "grade" | "title">(null);
   const [dragSectionId, setDragSectionId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; side: "before" | "after" } | null>(null);
   const [resizingSection, setResizingSection] = useState<{
@@ -814,6 +815,8 @@ export default function HomePage() {
         if (helpOpen) { setHelpOpen(false); return; }
         if (renderOpen) { setRenderOpen(false); return; }
         if (providersOpen) { setProvidersOpen(false); return; }
+        if (musicPanelOpen) { setMusicPanelOpen(false); return; }
+        if (editingVOId) { setEditingVOId(null); return; }
         if (lookOpen) { setLookOpen(null); return; }
         if (activeSectionId) {
           if (editable) (e.target as HTMLElement)?.blur?.();
@@ -855,10 +858,17 @@ export default function HomePage() {
         const sec = project.sections.find((s) => s.id === activeSectionId);
         if (!sec) return;
         e.preventDefault();
-        if (confirm(`Delete section "${sec.title}"?`)) {
-          removeSection(activeSectionId);
-          toast.info(`Removed "${sec.title}"`);
-        }
+        confirmAsk({
+          title: `Delete "${sec.title}"?`,
+          message: `Removes section ${sec.index.toString().padStart(2, "0")} from the timeline. Generated content for this section will be lost.`,
+          confirm_label: "Delete",
+          cancel_label: "Keep",
+          destructive: true,
+          onConfirm: () => {
+            removeSection(activeSectionId);
+            toast.info(`Removed "${sec.title}"`);
+          },
+        });
         return;
       }
       if (activeSectionId && (e.key === "d" || e.key === "D")) {
@@ -875,6 +885,8 @@ export default function HomePage() {
     helpOpen,
     renderOpen,
     providersOpen,
+    musicPanelOpen,
+    editingVOId,
     lookOpen,
     activeSectionId,
     project.sections,
@@ -1250,14 +1262,16 @@ export default function HomePage() {
 
         <div className="tl-row-label">
           // GRAPHICS
-          <button
-            type="button"
-            className="tl-row-add"
-            onClick={() => addGraphic(activeSectionStartS)}
-            title="Add a graphic overlay at the current section"
-          >
-            + Graphic
-          </button>
+          <div className="tl-row-actions">
+            <button
+              type="button"
+              className="tl-row-add-btn"
+              onClick={() => addGraphic(activeSectionStartS)}
+              title="Add a graphic overlay"
+            >
+              + GRAPHIC
+            </button>
+          </div>
         </div>
         <div className="graphics-overlay-row">
           {(project.graphics ?? []).length === 0 ? (
@@ -1319,7 +1333,19 @@ export default function HomePage() {
           );
         })() : null}
 
-        <div className="tl-row-label">// VIDEO</div>
+        <div className="tl-row-label">
+          // VIDEO
+          <div className="tl-row-actions">
+            <button
+              type="button"
+              className="tl-row-add-btn"
+              onClick={() => addClipSection(null)}
+              title="Add a new scene"
+            >
+              + VIDEO
+            </button>
+          </div>
+        </div>
         <div
           className="clips-row"
           style={{ gridTemplateColumns: tlGridCols }}
@@ -1384,7 +1410,7 @@ export default function HomePage() {
                   setDragSectionId(null);
                   setDropTarget(null);
                 }}
-                onClickCapture={() => setActiveSection(section.id)}
+                onClick={() => setActiveSection(section.id)}
                 style={
                   isPreviewing ? { animationDuration: `${section.duration_s}s` } : undefined
                 }
@@ -1657,30 +1683,48 @@ export default function HomePage() {
           </span>
         </div>
 
-        <div className="tl-row-label">// VO</div>
+        <div className="tl-row-label">
+          // VOICEOVER
+          <div className="tl-row-actions">
+            <button
+              type="button"
+              className="tl-row-add-btn"
+              onClick={() => addVOSegment()}
+              title="Add a voiceover segment"
+            >
+              + VOICEOVER
+            </button>
+          </div>
+        </div>
         <div className="audio-row vo-row">
           <VOTrack
             segments={project.vo_segments}
             duration={project.duration_s}
             editingVOId={editingVOId}
             setEditingVOId={setEditingVOId}
-            voJobs={voJobs}
-            providerKeys={providerKeys}
             updateVOSegment={updateVOSegment}
-            handleGenerateVO={handleGenerateVO}
-            setVoJobs={setVoJobs}
-            removeVOSegment={removeVOSegment}
-            addVOSegment={addVOSegment}
           />
         </div>
 
-        <div className="tl-row-label">// MUSIC</div>
+        <div className="tl-row-label">
+          // MUSIC
+          <div className="tl-row-actions">
+            <button
+              type="button"
+              className="tl-row-add-btn"
+              onClick={() => setMusicPanelOpen(true)}
+              title="Open music editor"
+            >
+              + MUSIC
+            </button>
+          </div>
+        </div>
         <div className="audio-row">
           <div className={`music-bed ${project.music_track?.output_url ? "voiced" : ""}`}>
             <button
               type="button"
               className="music-bed-main"
-              onClick={() => setLookOpen("music")}
+              onClick={() => setMusicPanelOpen(true)}
             >
               <span>
                 <strong>{project.music_track?.name ?? "—"}</strong> ·{" "}
@@ -1730,15 +1774,6 @@ export default function HomePage() {
                 {project.grade ? ` · ${gradeDescriptor(project.grade)}` : ""}
               </span>
             </button>
-            <button
-              type="button"
-              className="grade-export"
-              onClick={handleExportLUT}
-              disabled={!project.grade}
-              title="Export grade as .cube LUT"
-            >
-              ⤓ EXPORT LUT
-            </button>
           </div>
         </div>
       </div>
@@ -1752,6 +1787,49 @@ export default function HomePage() {
               providerKeys={providerKeys}
               onOpenProviders={() => setProvidersOpen(true)}
               onProviderKeyMissing={() => setProvidersOpen(true)}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {editingVOId ? (() => {
+        const seg = project.vo_segments.find((s) => s.id === editingVOId);
+        if (!seg) return null;
+        return (
+          <div className="flow-modal-overlay" onClick={() => setEditingVOId(null)}>
+            <div className="flow-modal" onClick={(e) => e.stopPropagation()}>
+              <VOSegmentEditor
+                segment={seg}
+                projectDuration={project.duration_s}
+                job={voJobs[seg.id]}
+                hasKey={!!providerKeys.elevenlabs}
+                onChange={(patch) => updateVOSegment(seg.id, patch)}
+                onGenerate={() => handleGenerateVO(seg.id)}
+                onDismissError={() => setVoJobs((j) => { const next = { ...j }; delete next[seg.id]; return next; })}
+                onRemove={() => { removeVOSegment(seg.id); setEditingVOId(null); }}
+              />
+            </div>
+          </div>
+        );
+      })() : null}
+
+      {musicPanelOpen ? (
+        <div className="flow-modal-overlay" onClick={() => setMusicPanelOpen(false)}>
+          <div className="flow-modal" onClick={(e) => e.stopPropagation()}>
+            <MusicEditor
+              music={project.music_track}
+              library={libraryMusic}
+              job={musicJob ?? undefined}
+              hasKey={!!providerKeys.elevenlabs}
+              durationS={project.duration_s}
+              onChange={updateMusic}
+              onLoadPreset={(item) => updateMusic(item)}
+              onSaveAs={(name) => project.music_track && saveMusicToLibrary(project.music_track, name)}
+              onRemovePreset={(id) => removeLibraryItem("music", id)}
+              onRenamePreset={(id, name) => renameLibraryItem("music", id, name)}
+              onGenerate={handleGenerateMusic}
+              onDismissError={() => setMusicJob(null)}
+              onClose={() => setMusicPanelOpen(false)}
             />
           </div>
         </div>
@@ -2079,27 +2157,13 @@ function VOTrack({
   duration,
   editingVOId,
   setEditingVOId,
-  voJobs,
-  providerKeys,
   updateVOSegment,
-  handleGenerateVO,
-  setVoJobs,
-  removeVOSegment,
-  addVOSegment,
 }: {
   segments: VOSeg[];
   duration: number;
   editingVOId: string | null;
   setEditingVOId: (id: string | null) => void;
-  voJobs: Record<string, { status: "running" | "error"; error?: string }>;
-  providerKeys: Partial<Record<ProviderId, string>>;
   updateVOSegment: (id: string, patch: Partial<Omit<VOSeg, "id">>) => void;
-  handleGenerateVO: (id: string) => void;
-  setVoJobs: React.Dispatch<
-    React.SetStateAction<Record<string, { status: "running" | "error"; error?: string }>>
-  >;
-  removeVOSegment: (id: string) => void;
-  addVOSegment: () => void;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<
@@ -2231,46 +2295,9 @@ function VOTrack({
             >
               ▶
             </button>
-            {editingVOId === seg.id ? (
-              <div className="vo-pop-wrap">
-                <Popover
-                  open
-                  onClose={() => setEditingVOId(null)}
-                  className="vo-popover"
-                >
-                  <VOSegmentEditor
-                    segment={seg}
-                    projectDuration={duration}
-                    job={voJobs[seg.id]}
-                    hasKey={!!providerKeys.elevenlabs}
-                    onChange={(patch) => updateVOSegment(seg.id, patch)}
-                    onGenerate={() => handleGenerateVO(seg.id)}
-                    onDismissError={() =>
-                      setVoJobs((j) => {
-                        const next = { ...j };
-                        delete next[seg.id];
-                        return next;
-                      })
-                    }
-                    onRemove={() => {
-                      removeVOSegment(seg.id);
-                      setEditingVOId(null);
-                    }}
-                  />
-                </Popover>
-              </div>
-            ) : null}
           </div>
         );
       })}
-      <button
-        type="button"
-        className="vo-add-btn"
-        onClick={addVOSegment}
-        title="Add VO segment"
-      >
-        + VO
-      </button>
     </div>
   );
 }
@@ -3185,6 +3212,34 @@ function MusicEditor({
   );
 }
 
+const GOOGLE_FONTS: { label: string; value: string; gfParam?: string }[] = [
+  { label: "JetBrains Mono Bold", value: "JetBrains Mono Bold" },
+  { label: "Inter Black", value: "Inter Black" },
+  { label: "Playfair Display Black", value: "Playfair Display Black", gfParam: "Playfair+Display:wght@900" },
+  { label: "Bebas Neue", value: "Bebas Neue", gfParam: "Bebas+Neue" },
+  { label: "Anton", value: "Anton", gfParam: "Anton" },
+  { label: "Oswald Bold", value: "Oswald Bold", gfParam: "Oswald:wght@700" },
+  { label: "Montserrat Black", value: "Montserrat Black", gfParam: "Montserrat:wght@900" },
+  { label: "DM Serif Display", value: "DM Serif Display", gfParam: "DM+Serif+Display" },
+  { label: "Cinzel Bold", value: "Cinzel Bold", gfParam: "Cinzel:wght@700" },
+  { label: "Raleway Black", value: "Raleway Black", gfParam: "Raleway:wght@900" },
+  { label: "Libre Baskerville Bold", value: "Libre Baskerville Bold", gfParam: "Libre+Baskerville:ital,wght@0,700" },
+  { label: "Cormorant Bold Italic", value: "Cormorant Bold Italic", gfParam: "Cormorant:ital,wght@1,700" },
+  { label: "Permanent Marker", value: "Permanent Marker", gfParam: "Permanent+Marker" },
+  { label: "Staatliches", value: "Staatliches", gfParam: "Staatliches" },
+];
+
+function loadGoogleFont(param: string) {
+  if (typeof document === "undefined") return;
+  const url = `https://fonts.googleapis.com/css2?family=${param}&display=swap`;
+  if (document.querySelector(`link[data-gf="${param}"]`)) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = url;
+  link.dataset.gf = param;
+  document.head.appendChild(link);
+}
+
 function TitleStyleEditor({
   style,
   library,
@@ -3223,8 +3278,23 @@ function TitleStyleEditor({
         />
       </Field>
       <Field label="Font">
+        <select
+          className="field-input"
+          value={GOOGLE_FONTS.some((f) => f.value === (style?.font ?? "")) ? (style?.font ?? "") : ""}
+          onChange={(e) => {
+            const entry = GOOGLE_FONTS.find((f) => f.value === e.target.value);
+            if (entry?.gfParam) loadGoogleFont(entry.gfParam);
+            if (e.target.value) onChange({ font: e.target.value });
+          }}
+        >
+          <option value="">— pick a font —</option>
+          {GOOGLE_FONTS.map((f) => (
+            <option key={f.value} value={f.value}>{f.label}</option>
+          ))}
+        </select>
         <input
           className="field-input"
+          style={{ marginTop: 4 }}
           value={style?.font ?? ""}
           onChange={(e) => onChange({ font: e.target.value })}
           placeholder="JetBrains Mono Bold"
@@ -3252,8 +3322,9 @@ function TitleStyleEditor({
         background: style?.background_color ?? "#0a0908",
         color: style?.color ?? "#f4f1ea",
         fontFamily: style?.font ?? "var(--font-mono)",
+        fontWeight: "bold",
       }}>
-        Title preview
+        {style?.font ? style.font : "Title preview"}
       </div>
     </div>
   );
@@ -3420,7 +3491,7 @@ function VOSegmentEditor({
   return (
     <div className="editor compact">
       <div className="editor-head">
-        <span>// VO</span>
+        <span>// VOICEOVER</span>
         <div style={{ display: "flex", gap: 6 }}>
           <button
             type="button"

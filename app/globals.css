@@ -39,15 +39,16 @@ a { color: inherit; text-decoration: none; }
 /* ───────────── WORKSPACE (3-column Premiere-style) ───────────── */
 .workspace {
   display: grid;
-  grid-template-columns: 280px 340px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   grid-template-rows: auto auto auto auto auto auto auto;
   grid-template-areas:
-    "top      top      top"
-    "hero     hero     hero"
-    "head     head     head"
-    "library  settings stage"
-    "tl       tl       tl"
-    "foot     foot     foot";
+    "top      top"
+    "hero     hero"
+    "head     head"
+    "library  settings"
+    "library  stage"
+    "tl       tl"
+    "foot     foot";
   gap: 16px;
   padding-bottom: 60px;
 }
@@ -146,36 +147,48 @@ a { color: inherit; text-decoration: none; }
 .project-settings {
   border: 1px solid var(--color-line);
   background: var(--color-surface);
-  padding: 14px 16px 8px;
+  padding: 12px 18px;
   display: flex;
-  flex-direction: column;
-  gap: 14px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
 }
 .project-settings-title {
-  font-size: 11px;
+  font-size: 9px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--color-fg-muted);
+  color: var(--color-fg-faint);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .project-settings .stage-meta-aspect {
   display: flex;
-  gap: 6px;
-  width: 100%;
+  gap: 5px;
+  flex-shrink: 0;
 }
-.project-settings .aspect-pill { flex: 1; justify-content: center; }
+.project-settings .aspect-pill {
+  flex: none;
+  padding: 5px 12px;
+  font-size: 12px;
+}
 .project-settings .lookbar {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 1px;
   background: var(--color-line);
-  margin: 4px -16px 0;
+  flex-shrink: 0;
 }
 .project-settings .lookbar .slot { background: var(--color-surface); }
+.project-settings .lookbar .slot .slot-btn { padding: 7px 16px; font-size: 12px; }
 .project-settings .lookbar .popover.look-popover {
-  left: calc(100% + 6px);
-  top: 0;
-  right: auto;
+  left: 0;
+  top: calc(100% + 6px);
   min-width: 380px;
+}
+.project-settings .stage-controls {
+  flex: 1;
+  min-width: 200px;
 }
 
 /* Right-side library sidebar */
@@ -322,18 +335,15 @@ a { color: inherit; text-decoration: none; }
       "top"
       "hero"
       "head"
-      "stage"
       "settings"
+      "stage"
       "tl"
       "library"
       "foot";
   }
   .hero-brand { font-size: 40px; }
   .workspace-library { min-height: 240px; max-height: none; }
-  .project-settings .lookbar .popover.look-popover {
-    left: 0;
-    top: calc(100% + 6px);
-  }
+  .project-settings { flex-wrap: wrap; }
 }
 @media (max-width: 600px) {
   .hero { flex-direction: column; gap: 12px; align-items: flex-start; }
@@ -708,24 +718,24 @@ button {
 
 /* Control panel — below the canvas, not overlaid */
 .stage-controls {
-  padding: 10px 14px 12px;
+  padding: 12px 18px 14px;
   background: var(--color-surface);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 /* Inside project-settings: bleed to edges, separator from lookbar */
 .project-settings .stage-controls {
-  margin: 0 -16px -8px;
+  margin: 0 -18px -12px;
   border-top: 1px solid var(--color-line);
-  padding: 10px 16px 14px;
+  padding: 12px 18px 16px;
 }
 
 /* Scrubber: one segment per section, sized by duration */
 .stage-scrubber {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   height: 5px;
   cursor: pointer;
 }
@@ -741,29 +751,29 @@ button {
 .stage-scrub-seg.past { background: rgba(255, 77, 126, 0.55); }
 .stage-scrub-seg.active {
   background: var(--color-blood);
-  height: 7px;
+  height: 8px;
   box-shadow: 0 0 8px rgba(255, 77, 126, 0.6);
 }
-.stage-scrubber:hover .stage-scrub-seg { height: 7px; }
+.stage-scrubber:hover .stage-scrub-seg { height: 8px; }
 
 .stage-controls-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 .stage-controls-time {
   font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.06em;
   color: var(--color-fg);
-  margin-left: 10px;
+  margin-left: 12px;
   white-space: nowrap;
 }
 .stage-controls-spacer { flex: 1; }
 
 .stage-iconbtn {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
   background: transparent;
@@ -777,10 +787,11 @@ button {
 .stage-iconbtn.primary {
   background: rgba(244, 241, 234, 0.92);
   color: var(--color-bg);
-  width: 46px;
-  height: 36px;
+  width: 48px;
+  height: 38px;
   font-size: 14px;
-  margin: 0 4px;
+  margin: 0 6px;
+  font-weight: 600;
 }
 .stage-iconbtn.primary:hover {
   background: var(--color-blood);
@@ -931,6 +942,29 @@ button {
   color: var(--color-blood);
   border-color: var(--color-blood-faint);
   background: var(--color-blood-soft);
+  outline: none;
+}
+.tl-row-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.tl-row-add-btn {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-bg);
+  background: var(--color-blood);
+  border: 1px solid var(--color-blood);
+  padding: 3px 10px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: opacity .12s;
+}
+.tl-row-add-btn:hover,
+.tl-row-add-btn:focus-visible {
+  opacity: 0.85;
   outline: none;
 }
 .graphics-overlay-row {
@@ -1238,19 +1272,19 @@ button.clip-version:hover { border-color: var(--color-blood-faint); }
   top: 50%;
   left: 0;
   transform: translate(-50%, -50%);
-  width: 16px;
-  height: 16px;
+  width: 32px;
+  height: 32px;
   background: var(--color-bg);
-  border: 1px solid var(--color-line-strong);
+  border: 2px solid var(--color-line-strong);
   display: grid;
   place-items: center;
-  font-size: 8px;
+  font-size: 13px;
   color: var(--color-fg-muted);
-  z-index: 2;
+  z-index: 3;
   cursor: pointer;
 }
-.trans-marker:hover { border-color: var(--color-blood); color: var(--color-blood); }
-.trans-marker[data-type="fade"] { color: var(--color-blood-faint); }
+.trans-marker:hover { border-color: var(--color-blood); color: var(--color-blood); background: var(--color-blood-soft); }
+.trans-marker[data-type="fade"] { color: var(--color-blood-faint); border-color: var(--color-blood-faint); }
 
 /* AUDIO TRACKS */
 .audio-row { display: grid; grid-template-columns: repeat(6, 1fr); position: relative; }
@@ -2054,7 +2088,7 @@ textarea.inline-edit { resize: vertical; min-height: 60px; width: 100%; padding:
   .clip-actions { gap: 6px; padding: 5px; }
   .clip-act { min-width: 44px; min-height: 36px; padding: 8px 12px; font-size: 14px; }
   .clip-insert-btn { width: 28px; height: 28px; font-size: 16px; opacity: 1; }
-  button.trans-marker { width: 22px; height: 22px; font-size: 11px; }
+  button.trans-marker { width: 26px; height: 26px; font-size: 11px; }
 }
 
 .clip-resize-handle {
