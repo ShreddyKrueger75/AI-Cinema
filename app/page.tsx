@@ -3707,7 +3707,10 @@ function FlowPanel({
       setJob(jobKey, { status: "running", startedAt: Date.now() });
       let throttled = false;
       try {
-        const r = await fetch(url, { credentials: "omit" });
+        const headers: HeadersInit = providerKeys.pollinations
+          ? { "x-provider-key": providerKeys.pollinations }
+          : {};
+        const r = await fetch(url, { credentials: "omit", headers });
         if (!r.ok) {
           let detail = `HTTP ${r.status}`;
           try {
@@ -3840,12 +3843,14 @@ function FlowPanel({
     if (isMotionModelFree(modelId)) {
       const stillToUse = referencedStill;
       if (stillToUse && !stillToUse.output_url && isImageModelFree(stillToUse.model)) {
+        // Store a direct (no-token) pollinations URL — <img> tags can't send
+        // the x-provider-key header the proxy needs. Users who want reliable
+        // stills should use the explicit Generate still path, which proxies.
         const url = pollinationsUrl(
           stillToUse.image_prompt,
           project.aspect,
           newSeed(),
           project.brief?.visual,
-          providerKeys.pollinations,
         );
         updateStill(section.id, stillToUse.id, { output_url: url });
       }
