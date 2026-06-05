@@ -714,8 +714,8 @@ export default function HomePage() {
         setPaletteOpen((o) => !o);
         return;
       }
-      // Esc fires before the editable bail so it dismisses dialogs even when an
-      // input inside the dialog has focus.
+      // Esc dismisses dialogs regardless of focus — including inputs inside
+      // the section editor modal, which previously bailed on the editable check.
       if (e.key === "Escape") {
         if (useConfirm.getState().prompt) { useConfirm.getState().cancel(); return; }
         if (paletteOpen) { setPaletteOpen(false); return; }
@@ -723,7 +723,11 @@ export default function HomePage() {
         if (renderOpen) { setRenderOpen(false); return; }
         if (providersOpen) { setProvidersOpen(false); return; }
         if (lookOpen) { setLookOpen(null); return; }
-        if (!editable && activeSectionId) { setActiveSection(null); return; }
+        if (activeSectionId) {
+          if (editable) (e.target as HTMLElement)?.blur?.();
+          setActiveSection(null);
+          return;
+        }
         return;
       }
       if (editable) return;

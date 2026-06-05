@@ -2219,34 +2219,40 @@ button.gen-cost-link:hover {
 }
 button.ref-hint {
   font-family: var(--font-mono);
-  background: transparent;
-  border: none;
+  background: var(--color-blood-soft);
+  border: 1px solid var(--color-blood-faint);
   text-align: left;
   cursor: pointer;
-  padding: 6px 8px;
-  margin: 2px -8px 0;
+  padding: 8px 12px;
+  margin: 6px 0 0;
   border-radius: 0;
-  transition: background .12s, color .12s;
+  color: var(--color-blood);
+  font-style: normal;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  transition: background .12s, color .12s, border-color .12s;
 }
 button.ref-hint:hover,
 button.ref-hint:focus-visible {
-  background: var(--color-blood-soft);
-  color: var(--color-blood);
-  font-style: normal;
+  background: var(--color-blood);
+  border-color: var(--color-blood);
+  color: #fff;
   outline: none;
 }
 button.ref-hint::after {
-  content: " · click to switch";
+  content: "→ Switch to SDXL";
   font-style: normal;
-  opacity: 0;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   font-size: 9px;
-  margin-left: 4px;
-  transition: opacity .12s;
+  white-space: nowrap;
+  padding: 3px 8px;
+  border: 1px solid currentColor;
+  flex-shrink: 0;
 }
-button.ref-hint:hover::after,
-button.ref-hint:focus-visible::after { opacity: 1; }
 
 /* ───────────── PROVIDERS DIALOG ───────────── */
 .providers-notice {
@@ -3059,21 +3065,15 @@ button.ref-hint:focus-visible::after { opacity: 1; }
 }
 .auth-head { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 .auth-wordmark { display: flex; align-items: baseline; gap: 12px; }
-.auth-wordmark .painted {
-  font-family: var(--font-painted);
-  font-size: 30px;
-  color: var(--color-blood);
-  transform: rotate(-2deg);
-  line-height: 0.9;
-}
-.auth-wordmark .lockup {
+.auth-brand {
   font-family: var(--font-display);
   font-weight: 900;
-  font-size: 14px;
-  letter-spacing: 0.32em;
+  font-size: 36px;
+  letter-spacing: -0.02em;
+  line-height: 1;
   color: var(--color-fg);
-  text-transform: uppercase;
 }
+.auth-brand .ai { color: var(--color-blood); }
 .auth-tagline {
   font-size: 10px;
   letter-spacing: 0.18em;

@@ -14,6 +14,7 @@ export default async function SignupPage({
   const params = await searchParams;
   const error = params.error;
   const callbackUrl = params.callbackUrl ?? "/";
+  const kvReady = isKvConfigured();
 
   async function doSignup(formData: FormData) {
     "use server";
@@ -51,8 +52,7 @@ export default async function SignupPage({
       <div className="auth-card">
         <div className="auth-head">
           <div className="auth-wordmark">
-            <span className="painted">AI Cinema</span>
-            <span className="lockup">by Bloody Finger</span>
+            <span className="auth-brand">Cinema <span className="ai">AI</span></span>
           </div>
           <div className="auth-tagline">Cinematic video, made easy. Bring your own model.</div>
         </div>
@@ -60,6 +60,9 @@ export default async function SignupPage({
         <h1 className="auth-title">// CREATE ACCOUNT</h1>
         <p className="auth-sub">Cloud sync for your project library, briefs, grades, and music presets. The editor itself stays open without an account.</p>
 
+        {!kvReady ? (
+          <div className="auth-error">⚠ Cloud accounts are not configured. Set up Vercel KV to enable sign-up.</div>
+        ) : null}
         {error ? <div className="auth-error">⚠ {decodeURIComponent(error)}</div> : null}
 
         <form action={doSignup} className="auth-form">
