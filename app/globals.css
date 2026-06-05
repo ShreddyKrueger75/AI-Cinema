@@ -913,50 +913,118 @@ button {
   color: var(--color-fg-faint);
   padding: 8px 0 6px;
   border-bottom: 1px dashed var(--color-line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
-.graphics-row {
-  min-height: 0;
-  margin-bottom: 4px;
-}
-.graphics-row .clip-slot {
-  padding: 8px 10px;
-  border-left: 1px solid var(--color-line);
-  border-bottom: 1px solid var(--color-line);
-  cursor: pointer;
-  transition: background .12s;
-}
-.graphics-row .clip-slot:last-child { border-right: 1px solid var(--color-line); }
-.graphics-row .clip-slot.empty {
+.tl-row-add {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-fg-muted);
   background: transparent;
-  pointer-events: none;
+  border: 1px solid var(--color-line);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color .12s, border-color .12s, background .12s;
 }
-.graphics-row .clip-slot.empty::after {
-  content: "";
-  display: block;
-  height: 1px;
-}
-.graphics-row .clip-slot.graphic-slot {
-  background: var(--color-surface);
-}
-.graphics-row .clip-slot.graphic-slot:hover {
-  background: var(--color-elev);
-}
-.graphics-row .clip-slot.graphic-slot.active {
-  background: var(--color-blood-soft);
+.tl-row-add:hover,
+.tl-row-add:focus-visible {
+  color: var(--color-blood);
   border-color: var(--color-blood-faint);
+  background: var(--color-blood-soft);
+  outline: none;
 }
-.graphics-row .clip-thumb {
-  margin-bottom: 4px;
-  max-height: 70px;
+.graphics-overlay-row {
+  position: relative;
+  height: 44px;
+  margin-bottom: 6px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--color-surface) 0,
+    var(--color-surface) 2px,
+    rgba(255,255,255,0.02) 2px,
+    rgba(255,255,255,0.02) 4px
+  );
+  border: 1px solid var(--color-line);
+  border-radius: 0;
 }
-.clip-slot-label {
+.graphics-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
   font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-fg-faint);
+  font-style: italic;
+}
+.graphic-block {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  background: var(--color-blood-soft);
+  border: 1px solid var(--color-blood-faint);
+  cursor: pointer;
+  padding: 4px 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  font-family: var(--font-mono);
+  transition: background .12s, border-color .12s;
+}
+.graphic-block:hover,
+.graphic-block.active {
+  background: var(--color-blood);
+  border-color: var(--color-blood);
+  color: #fff;
+}
+.graphic-block-text {
+  font-size: 11px;
   color: var(--color-fg);
   letter-spacing: 0.04em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.graphic-block:hover .graphic-block-text,
+.graphic-block.active .graphic-block-text { color: #fff; }
+.graphic-block-time {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--color-fg-muted);
+  text-transform: uppercase;
+}
+.graphic-block:hover .graphic-block-time,
+.graphic-block.active .graphic-block-time { color: rgba(255,255,255,0.85); }
+.graphic-pop-wrap {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+}
+
+.stage-graphic-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  padding: 24px 24px;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-align: center;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.6);
+  z-index: 3;
+  pointer-events: none;
+  line-height: 1.15;
+}
+.stage-graphic-overlay.pos-top { top: 4%; }
+.stage-graphic-overlay.pos-center { top: 50%; transform: translateY(-50%); }
+.stage-graphic-overlay.pos-bottom { bottom: 4%; }
 .clip {
   position: relative;
   padding: 16px 14px;

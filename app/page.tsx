@@ -12,6 +12,7 @@ import {
 import { selectActiveSection, useStore } from "@/lib/store";
 import type {
   Aspect,
+  GraphicOverlay,
   Grade,
   Project,
   Section,
@@ -347,6 +348,9 @@ export default function HomePage() {
   const addVOSegment = useStore((s) => s.addVOSegment);
   const updateVOSegment = useStore((s) => s.updateVOSegment);
   const removeVOSegment = useStore((s) => s.removeVOSegment);
+  const addGraphic = useStore((s) => s.addGraphic);
+  const updateGraphic = useStore((s) => s.updateGraphic);
+  const removeGraphic = useStore((s) => s.removeGraphic);
   const updateBrief = useStore((s) => s.updateBrief);
   const updateGrade = useStore((s) => s.updateGrade);
   const updateMusic = useStore((s) => s.updateMusic);
@@ -489,6 +493,7 @@ export default function HomePage() {
   const [insertAfterId, setInsertAfterId] = useState<string | null>(null);
   const [timelineVersionMenuId, setTimelineVersionMenuId] = useState<string | null>(null);
   const [editingTransitionId, setEditingTransitionId] = useState<string | null>(null);
+  const [editingGraphicId, setEditingGraphicId] = useState<string | null>(null);
   const [editingVOId, setEditingVOId] = useState<string | null>(null);
   const [lookOpen, setLookOpen] = useState<null | "brief" | "grade" | "music" | "title">(null);
   const [dragSectionId, setDragSectionId] = useState<string | null>(null);
@@ -1197,39 +1202,66 @@ export default function HomePage() {
           ))}
         </div>
 
-        <div className="tl-row-label">// GRAPHICS</div>
-        <div
-          className="clips-row graphics-row"
-          style={{ gridTemplateColumns: tlGridCols }}
-        >
-          {project.sections.map((section) => {
-            if (section.type !== "title") {
-              return <div key={section.id} className="clip-slot empty" />;
-            }
-            const isActive = section.id === activeSectionId;
-            const activeVer = section.versions.find((v) => v.id === section.active_version_id);
-            const text = activeVer && activeVer.kind === "title" ? activeVer.text : "TITLE";
-            return (
-              <div
-                key={section.id}
-                className={`clip-slot graphic-slot ${isActive ? "active" : ""}`}
-                onClick={() => setActiveSection(section.id)}
-                role="button"
-                aria-label={`Open graphic ${section.title}`}
-              >
+        <div className="tl-row-label">
+          // GRAPHICS
+          <button
+            type="button"
+            className="tl-row-add"
+            onClick={() => addGraphic(playheadSeconds || 0)}
+            title="Add a graphic overlay at the current time"
+          >
+            + Graphic
+          </button>
+        </div>
+        <div className="graphics-overlay-row">
+          {(project.graphics ?? []).length === 0 ? (
+            <div className="graphics-empty">
+              no graphics yet · graphics overlay on top of clips
+            </div>
+          ) : (
+            (project.graphics ?? []).map((g) => {
+              const total = Math.max(0.01, project.duration_s);
+              const left = (g.start_s / total) * 100;
+              const width = Math.min(100 - left, (g.duration_s / total) * 100);
+              const isEditing = editingGraphicId === g.id;
+              return (
                 <div
-                  className={`clip-thumb title ${aspectClass}`}
-                  style={{
-                    background: project.title_settings?.background_color ?? "#0a0908",
-                    color: project.title_settings?.color ?? "#f4f1ea",
+                  key={g.id}
+                  className={`graphic-block ${isEditing ? "active" : ""}`}
+                  style={{ left: `${left}%`, width: `${width}%` }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingGraphicId(isEditing ? null : g.id);
                   }}
+                  title={`${g.text} · ${g.start_s.toFixed(1)}s for ${g.duration_s.toFixed(1)}s`}
                 >
-                  <span>{text.slice(0, 16)}</span>
+                  <span className="graphic-block-text">{g.text}</span>
+                  <span className="graphic-block-time">
+                    {g.start_s.toFixed(1)}s · {g.duration_s.toFixed(1)}s
+                  </span>
+                  {isEditing ? (
+                    <div className="graphic-pop-wrap">
+                      <Popover
+                        open
+                        onClose={() => setEditingGraphicId(null)}
+                        className="vo-popover"
+                      >
+                        <GraphicOverlayEditor
+                          overlay={g}
+                          projectDuration={project.duration_s}
+                          onChange={(patch) => updateGraphic(g.id, patch)}
+                          onRemove={() => {
+                            removeGraphic(g.id);
+                            setEditingGraphicId(null);
+                          }}
+                        />
+                      </Popover>
+                    </div>
+                  ) : null}
                 </div>
-                <div className="clip-slot-label">{section.title}</div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
 
         <div className="tl-row-label">// VIDEO</div>
@@ -2173,6 +2205,10 @@ function PreviewStage({
   const aspectRatio =
     project.aspect === "16:9" ? "16 / 9" : project.aspect === "1:1" ? "1 / 1" : "9 / 16";
 
+  const activeOverlays = (project.graphics ?? []).filter(
+    (g) => startSeconds >= g.start_s && startSeconds < g.start_s + g.duration_s,
+  );
+
   const handleSeekToSection = (idx: number) => {
     const next = ((idx % project.sections.length) + project.sections.length) % project.sections.length;
     setActiveSection(project.sections[next].id);
@@ -2228,6 +2264,19 @@ function PreviewStage({
             <span className="stage-title-text">{section.title}</span>
             <span className="stage-type">{section.type === "title" ? "GRAPHIC" : "CLIP"}</span>
           </div>
+
+          {activeOverlays.map((g) => (
+            <div
+              key={g.id}
+              className={`stage-graphic-overlay pos-${g.position ?? "center"}`}
+              style={{
+                color: g.color ?? project.title_settings?.color ?? "#f4f1ea",
+                fontFamily: g.font ?? project.title_settings?.font ?? "var(--font-display)",
+              }}
+            >
+              <span>{g.text}</span>
+            </div>
+          ))}
 
           {/* Center play overlay when paused */}
           {!isPlaying ? (
@@ -3147,6 +3196,77 @@ function TransitionEditor({
           />
         </Field>
       ) : null}
+    </div>
+  );
+}
+
+function GraphicOverlayEditor({
+  overlay,
+  projectDuration,
+  onChange,
+  onRemove,
+}: {
+  overlay: GraphicOverlay;
+  projectDuration: number;
+  onChange: (patch: Partial<Omit<GraphicOverlay, "id">>) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="editor compact">
+      <div className="editor-head">
+        <span>// GRAPHIC</span>
+        <button type="button" className="btn ghost" onClick={onRemove} aria-label="Remove graphic">✕ Remove</button>
+      </div>
+      <Field label="Text">
+        <textarea
+          rows={2}
+          className="field-input tall"
+          value={overlay.text}
+          onChange={(e) => onChange({ text: e.target.value })}
+          placeholder="What the graphic says"
+        />
+      </Field>
+      <div className="field-row">
+        <Field label="Position">
+          <select
+            className="field-input"
+            value={overlay.position ?? "center"}
+            onChange={(e) => onChange({ position: e.target.value as "top" | "center" | "bottom" })}
+          >
+            <option value="top">Top</option>
+            <option value="center">Center</option>
+            <option value="bottom">Bottom</option>
+          </select>
+        </Field>
+        <Field label={`Start ${overlay.start_s.toFixed(1)}s`}>
+          <input
+            type="range"
+            min={0}
+            max={Math.max(0, projectDuration - 0.5)}
+            step={0.1}
+            value={overlay.start_s}
+            onChange={(e) => onChange({ start_s: parseFloat(e.target.value) })}
+          />
+        </Field>
+        <Field label={`Duration ${overlay.duration_s.toFixed(1)}s`}>
+          <input
+            type="range"
+            min={0.5}
+            max={Math.max(0.5, projectDuration - overlay.start_s)}
+            step={0.1}
+            value={overlay.duration_s}
+            onChange={(e) => onChange({ duration_s: parseFloat(e.target.value) })}
+          />
+        </Field>
+      </div>
+      <Field label="Color">
+        <input
+          type="color"
+          className="field-input"
+          value={overlay.color ?? "#f4f1ea"}
+          onChange={(e) => onChange({ color: e.target.value })}
+        />
+      </Field>
     </div>
   );
 }

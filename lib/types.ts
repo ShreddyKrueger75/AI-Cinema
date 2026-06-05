@@ -102,6 +102,19 @@ export type TitleStyle = {
   background_color: string;
 };
 
+export type GraphicOverlay = {
+  id: string;
+  label: string;
+  text: string;
+  start_s: number;
+  duration_s: number;
+  style_ref?: string | null;
+  font?: string;
+  color?: string;
+  background_color?: string;
+  position?: "top" | "center" | "bottom";
+};
+
 export type Project = {
   schema_version: 1;
   id: string;
@@ -113,6 +126,7 @@ export type Project = {
   sections: Section[];
   transitions: Transition[];
   vo_segments: VOSegment[];
+  graphics: GraphicOverlay[];
   music_track?: MusicTrack;
   grade?: Grade;
   brief?: Brief;

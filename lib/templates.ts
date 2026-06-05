@@ -145,6 +145,7 @@ function baseProject(opts: {
     sections,
     transitions: transitionsFor(sections.map((s) => s.id)),
     vo_segments: opts.vo ?? [],
+    graphics: [],
     music_track: opts.music ?? DEFAULT_MUSIC,
     grade: opts.grade ?? DEFAULT_GRADE,
     brief: opts.brief ?? DEFAULT_BRIEF,
