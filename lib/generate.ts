@@ -6,7 +6,13 @@ export function aspectDims(aspect: Aspect): { w: number; h: number } {
   return { w: 576, h: 1024 };
 }
 
-export function pollinationsUrl(prompt: string, aspect: Aspect, seed: number, brief?: string): string {
+export function pollinationsUrl(
+  prompt: string,
+  aspect: Aspect,
+  seed: number,
+  brief?: string,
+  token?: string,
+): string {
   const dims = aspectDims(aspect);
   const composed = [brief?.trim(), prompt.trim()].filter(Boolean).join(", ") || "cinematic still";
   const safe = encodeURIComponent(composed);
@@ -17,6 +23,8 @@ export function pollinationsUrl(prompt: string, aspect: Aspect, seed: number, br
     nologo: "true",
     model: "flux",
   });
+  const t = token?.trim();
+  if (t) params.set("token", t);
   return `https://image.pollinations.ai/prompt/${safe}?${params.toString()}`;
 }
 

@@ -3545,6 +3545,7 @@ function FlowPanel({
         project.aspect,
         newSeed(),
         project.brief?.visual,
+        providerKeys.pollinations,
       );
       const jobKey = stillJobKey(section.id, activeStill.id);
       setJob(jobKey, { status: "running", startedAt: Date.now() });
@@ -3600,7 +3601,7 @@ function FlowPanel({
         toast.error(
           throttled ? "Free preview throttled" : "Generation failed",
           throttled
-            ? `${message} Wait ~30s, sign up at https://enter.pollinations.ai, or add a Replicate key for automatic Flux Schnell fallback.`
+            ? `${message} Wait ~30s, add a Pollinations token (🔑 Keys → Pollinations) from enter.pollinations.ai, or add a Replicate key for automatic Flux Schnell fallback.`
             : message,
         );
       }
@@ -3688,6 +3689,7 @@ function FlowPanel({
           project.aspect,
           newSeed(),
           project.brief?.visual,
+          providerKeys.pollinations,
         );
         updateStill(section.id, stillToUse.id, { output_url: url });
       }
@@ -4167,11 +4169,30 @@ function ClipFlowBody({
             className="field-input tall"
             rows={3}
             value={activeStill?.image_prompt ?? ""}
-            disabled={!activeStill}
-            placeholder={activeStill ? "" : "+ new still to start"}
-            onChange={(e) =>
-              activeStill && onUpdateStill(activeStill.id, { image_prompt: e.target.value })
-            }
+            placeholder={activeStill ? "" : "start typing — a still will be created"}
+            onFocus={() => {
+              if (!activeStill) onAddStill();
+            }}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (activeStill) {
+                onUpdateStill(activeStill.id, { image_prompt: value });
+                return;
+              }
+              useStore.getState().addStill(section.id);
+              const after = useStore
+                .getState()
+                .project.sections.find((s) => s.id === section.id);
+              const newStill =
+                after?.active_still_id
+                  ? after.stills.find((s) => s.id === after.active_still_id)
+                  : null;
+              if (newStill) {
+                useStore
+                  .getState()
+                  .updateStill(section.id, newStill.id, { image_prompt: value });
+              }
+            }}
           />
         </Field>
 
@@ -5114,7 +5135,7 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
             <div className="modal-section-title">// PROVIDERS</div>
             <dl className="help-defs">
               <dt>Pollinations <span className="help-tag free">FREE</span></dt>
-              <dd>Free Flux stills. Often queued (1 request per IP) — falls back to Flux Schnell automatically if a Replicate key is configured.</dd>
+              <dd>Free Flux stills. Often queued (1 request per IP) — sign up at enter.pollinations.ai and paste the token via 🔑 Keys to skip the queue. Or add a Replicate key to auto-fall back to Flux Schnell.</dd>
               <dt>Replicate <span className="help-tag">KEY</span></dt>
               <dd>Flux 1.1 Pro, Flux Schnell, SDXL, Ideogram for stills; MiniMax, Kling, Pika, Luma for motion. ~$0.003–0.08 per still, ~$0.075–0.4 per motion second.</dd>
               <dt>Runway <span className="help-tag">KEY</span></dt>
