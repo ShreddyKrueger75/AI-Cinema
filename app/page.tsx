@@ -326,6 +326,31 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 // some legacy codecs work in Safari but not Chrome/Firefox. Quick check up
 // front so the user gets a clear "not supported" warning instead of a silent
 // audio element that won't play.
+// Same idea as canBrowserPlayAudio, but for video imports. .mov from iPhones
+// usually works (H.264), but .mkv / .avi / .wmv / .flv often fail.
+function canBrowserPlayVideo(file: File): { ok: boolean; reason?: string } {
+  const v = document.createElement("video");
+  const mime = file.type || "";
+  const ext = file.name.toLowerCase().split(".").pop() ?? "";
+  if (mime && v.canPlayType(mime) !== "") return { ok: true };
+  const fallback: Record<string, string> = {
+    mp4: "video/mp4",
+    m4v: "video/mp4",
+    mov: "video/quicktime",
+    webm: "video/webm",
+    ogv: "video/ogg",
+    ogg: "video/ogg",
+    "3gp": "video/3gpp",
+    "3g2": "video/3gpp2",
+  };
+  const guess = fallback[ext];
+  if (guess && v.canPlayType(guess) !== "") return { ok: true };
+  return {
+    ok: false,
+    reason: `Your browser can't play .${ext || mime || "this format"}. Try .mp4, .webm, .mov (H.264), or .ogv.`,
+  };
+}
+
 function canBrowserPlayAudio(file: File): { ok: boolean; reason?: string } {
   const a = document.createElement("audio");
   const mime = file.type || "";
@@ -896,6 +921,7 @@ export default function HomePage() {
         if (providersOpen) { setProvidersOpen(false); return; }
         if (musicPanelOpen) { setMusicPanelOpen(false); return; }
         if (editingVOId) { setEditingVOId(null); return; }
+        if (editingMusicId) { setEditingMusicId(null); return; }
         if (editingGraphicId) { setEditingGraphicId(null); return; }
         if (lookOpen) { setLookOpen(null); return; }
         if (activeSectionId) {
@@ -1434,9 +1460,18 @@ export default function HomePage() {
               title="Import an image (becomes a still) or a video (becomes a clip) as a new scene"
               aria-label="Import video or image as new scene"
               onClick={async () => {
-                const file = await pickFile("image/*,video/*");
+                const file = await pickFile("image/*,video/*,.mp4,.m4v,.mov,.webm,.ogv,.ogg,.3gp,.3g2");
                 if (!file) return;
-                const isVideo = file.type.startsWith("video/");
+                const isVideo =
+                  file.type.startsWith("video/") ||
+                  /\.(mp4|m4v|mov|webm|ogv|ogg|3gp|3g2|mkv|avi|wmv|flv)$/i.test(file.name);
+                if (isVideo) {
+                  const check = canBrowserPlayVideo(file);
+                  if (!check.ok) {
+                    toast.error("Unsupported video format", check.reason);
+                    return;
+                  }
+                }
                 const url = URL.createObjectURL(file);
                 const poster = isVideo ? await extractVideoPosterDataUrl(file) : null;
                 const videoDuration = isVideo
@@ -1936,6 +1971,23 @@ export default function HomePage() {
                   removeGraphic(eg.id);
                   setEditingGraphicId(null);
                 }}
+              />
+            </div>
+          </div>
+        );
+      })() : null}
+
+      {editingMusicId ? (() => {
+        const seg = (project.music_segments ?? []).find((s) => s.id === editingMusicId);
+        if (!seg) return null;
+        return (
+          <div className="flow-modal-overlay" onClick={() => setEditingMusicId(null)}>
+            <div className="flow-modal" onClick={(e) => e.stopPropagation()}>
+              <MusicSegmentEditor
+                segment={seg}
+                projectDuration={project.duration_s}
+                onChange={(patch) => updateMusicSegment(seg.id, patch)}
+                onRemove={() => { removeMusicSegment(seg.id); setEditingMusicId(null); }}
               />
             </div>
           </div>
@@ -3924,6 +3976,111 @@ function VOSegmentEditor({
           {job?.status === "running" ? "● Generating…" : "⏵ Generate VO"}
         </button>
       </div>
+    </div>
+  );
+}
+
+function MusicSegmentEditor({
+  segment,
+  projectDuration,
+  onChange,
+  onRemove,
+}: {
+  segment: MusicSegment;
+  projectDuration: number;
+  onChange: (patch: Partial<Omit<MusicSegment, "id">>) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="editor compact">
+      <div className="editor-head">
+        <span>// MUSIC</span>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            type="button"
+            className="btn ghost"
+            title="Import an audio file"
+            onClick={async () => {
+              const file = await pickFile("audio/*");
+              if (!file) return;
+              const check = canBrowserPlayAudio(file);
+              if (!check.ok) {
+                toast.error("Unsupported audio format", check.reason);
+                return;
+              }
+              const url = URL.createObjectURL(file);
+              const measured = await measureAudioDuration(url).catch(() => null);
+              const patch: Partial<Omit<MusicSegment, "id">> = {
+                output_url: url,
+                name: file.name.replace(/\.[^.]+$/, ""),
+              };
+              if (measured && Number.isFinite(measured) && measured > 0) {
+                patch.duration_s = measured;
+              }
+              onChange(patch);
+              toast.success("Music imported", file.name);
+            }}
+          >
+            ▤ Import
+          </button>
+          <button type="button" className="btn ghost" onClick={onRemove}>✕ Remove</button>
+        </div>
+      </div>
+      <Field label="Name">
+        <input
+          className="field-input"
+          value={segment.name}
+          onChange={(e) => onChange({ name: e.target.value })}
+          placeholder="Track name"
+        />
+      </Field>
+      <Field label="Prompt">
+        <textarea
+          rows={3}
+          className="field-input tall"
+          value={segment.prompt}
+          onChange={(e) => onChange({ prompt: e.target.value })}
+          placeholder="cinematic build, low piano, distant strings"
+        />
+      </Field>
+      <div className="field-row">
+        <Field label="Model">
+          <select
+            className="field-input"
+            value={segment.model}
+            onChange={(e) => onChange({ model: e.target.value })}
+          >
+            <option value="elevenlabs-music">ElevenLabs Music</option>
+            <option value="stable-audio">Stable Audio</option>
+            <option value="suno">Suno</option>
+          </select>
+        </Field>
+        <Field label={`Start ${segment.start_s.toFixed(1)}s`}>
+          <input
+            type="range"
+            min={0}
+            max={Math.max(0, projectDuration - 0.5)}
+            step={0.5}
+            value={segment.start_s}
+            onChange={(e) => onChange({ start_s: Number(e.target.value) })}
+          />
+        </Field>
+        <Field label={`Duration ${segment.duration_s.toFixed(1)}s`}>
+          <input
+            type="range"
+            min={0.5}
+            max={Math.max(0.5, projectDuration - segment.start_s)}
+            step={0.5}
+            value={segment.duration_s}
+            onChange={(e) => onChange({ duration_s: Number(e.target.value) })}
+          />
+        </Field>
+      </div>
+      {segment.output_url ? (
+        <Field label="Preview">
+          <audio src={segment.output_url} controls className="vo-audio" />
+        </Field>
+      ) : null}
     </div>
   );
 }
