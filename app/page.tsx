@@ -1410,7 +1410,7 @@ export default function HomePage() {
                   setDragSectionId(null);
                   setDropTarget(null);
                 }}
-                onClickCapture={() => setActiveSection(section.id)}
+                onClick={() => setActiveSection(section.id)}
                 style={
                   isPreviewing ? { animationDuration: `${section.duration_s}s` } : undefined
                 }
