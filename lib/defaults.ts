@@ -1,6 +1,7 @@
 import type {
   Brief,
   ClipVersion,
+  GraphicOverlay,
   Grade,
   MusicTrack,
   Project,
@@ -174,7 +175,7 @@ export function createDefaultProject(): Project {
     buildSimpleClipSection({ id: "section_02", index: 2, title: "Reveal", active_version_label: "first take" }),
     buildSection03Detail(),
     buildSimpleClipSection({ id: "section_04", index: 4, title: "B-roll", active_version_label: "first take" }),
-    buildTitleSection({ id: "section_05", index: 5, title: "Available Now", text: "Available Now" }),
+    buildSimpleClipSection({ id: "section_05", index: 5, title: "Available Now", active_version_label: "first take" }),
     buildSimpleClipSection({ id: "section_06", index: 6, title: "CTA", active_version_label: null }),
   ];
 
@@ -191,6 +192,17 @@ export function createDefaultProject(): Project {
     { id: "vo_02", text: "Hand-stitched. Considered. Built to outlast you.", voice: "default", start_s: 6, duration_s: 6 },
   ];
 
+  const graphics: GraphicOverlay[] = [
+    {
+      id: "graphic_available_now",
+      label: "Available Now",
+      text: "Available Now",
+      start_s: 12,
+      duration_s: 3,
+      position: "center",
+    },
+  ];
+
   const created_at = nowIso();
   return {
     schema_version: 1,
@@ -203,7 +215,7 @@ export function createDefaultProject(): Project {
     sections,
     transitions,
     vo_segments,
-    graphics: [],
+    graphics,
     music_track: DEFAULT_MUSIC,
     grade: DEFAULT_GRADE,
     brief: DEFAULT_BRIEF,

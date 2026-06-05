@@ -1,6 +1,7 @@
 import type {
   Brief,
   ClipVersion,
+  GraphicOverlay,
   Grade,
   MusicTrack,
   Project,
@@ -66,31 +67,6 @@ function clipSection(opts: {
   };
 }
 
-function titleSection(opts: { index: number; title: string; text: string; duration_s?: number }): Section {
-  const id = newId("section");
-  const versionId = newId("ver");
-  const duration_s = opts.duration_s ?? 3;
-  return {
-    id,
-    index: opts.index,
-    type: "title",
-    title: opts.title,
-    duration_s,
-    stills: [],
-    active_still_id: null,
-    versions: [
-      {
-        id: versionId,
-        kind: "title",
-        label: "v1",
-        text: opts.text,
-        style_ref: null,
-      },
-    ],
-    active_version_id: versionId,
-  };
-}
-
 function transitionsFor(sectionIds: string[], type: Transition["type"] = "crossfade"): Transition[] {
   const out: Transition[] = [];
   for (let i = 0; i < sectionIds.length - 1; i++) {
@@ -126,6 +102,7 @@ function baseProject(opts: {
   name: string;
   sections: Section[];
   vo?: VOSegment[];
+  graphics?: GraphicOverlay[];
   brief?: Brief;
   grade?: Grade;
   music?: MusicTrack;
@@ -145,7 +122,7 @@ function baseProject(opts: {
     sections,
     transitions: transitionsFor(sections.map((s) => s.id)),
     vo_segments: opts.vo ?? [],
-    graphics: [],
+    graphics: opts.graphics ?? [],
     music_track: opts.music ?? DEFAULT_MUSIC,
     grade: opts.grade ?? DEFAULT_GRADE,
     brief: opts.brief ?? DEFAULT_BRIEF,
@@ -169,7 +146,7 @@ export const TEMPLATES: Template[] = [
   {
     id: "tpl_product_reveal",
     name: "Product Reveal",
-    description: "6 × 3s vertical hero spot. Open → Reveal → Detail → B-roll → Title → CTA.",
+    description: "6 × 3s vertical hero spot. Open → Reveal → Detail → B-roll → CTA. Title as graphic overlay.",
     build: () => {
       const sections = [
         clipSection({
@@ -196,7 +173,12 @@ export const TEMPLATES: Template[] = [
           prompt: "lifestyle context, hero product in hand, environmental, candid",
           motion: "subtle handheld drift",
         }),
-        titleSection({ index: 5, title: "Available Now", text: "Available Now" }),
+        clipSection({
+          index: 5,
+          title: "Hero hold",
+          prompt: "hero product backlit, bone-on-black backdrop, hero hold for title",
+          motion: "static, slow breathing focus",
+        }),
         clipSection({
           index: 6,
           title: "CTA",
@@ -217,24 +199,121 @@ export const TEMPLATES: Template[] = [
             duration_s: 6,
           },
         ],
+        graphics: [
+          {
+            id: newId("graphic"),
+            label: "Available Now",
+            text: "Available Now",
+            start_s: 12,
+            duration_s: 3,
+            position: "center",
+          },
+        ],
       });
     },
   },
   {
-    id: "tpl_title_card",
-    name: "Title card only",
-    description: "Single 5s title. For drops, cuts, or section breaks.",
+    id: "tpl_social_story",
+    name: "Social Story (9:16)",
+    description: "5 × 3s vertical hook for Instagram/TikTok stories. Hook → tease → reveal → proof → CTA.",
     build: () =>
       baseProject({
-        name: "Title Card",
+        name: "Social Story",
         aspect: "9:16",
-        sections: [titleSection({ index: 1, title: "Title", text: "Coming Soon", duration_s: 5 })],
+        sections: [
+          clipSection({
+            index: 1,
+            title: "Hook",
+            prompt: "punchy hero subject, bold composition, eye-catching, vertical framing",
+            motion: "quick push in",
+          }),
+          clipSection({
+            index: 2,
+            title: "Tease",
+            prompt: "intriguing detail, partial reveal, creates curiosity, soft focus background",
+            motion: "slow drift right",
+          }),
+          clipSection({
+            index: 3,
+            title: "Reveal",
+            prompt: "full subject reveal, hero moment, sharp focus, vibrant",
+            motion: "pull back to wide",
+          }),
+          clipSection({
+            index: 4,
+            title: "Proof",
+            prompt: "lifestyle context, user enjoying product, authentic candid moment",
+            motion: "handheld drift",
+          }),
+          clipSection({
+            index: 5,
+            title: "CTA",
+            prompt: "clean background, branded space, call to action area",
+            motion: "static",
+          }),
+        ],
+        graphics: [
+          {
+            id: newId("graphic"),
+            label: "Swipe Up",
+            text: "↑ Tap to learn more",
+            start_s: 12,
+            duration_s: 3,
+            position: "bottom",
+          },
+        ],
+      }),
+  },
+  {
+    id: "tpl_youtube_preroll",
+    name: "YouTube Pre-Roll (16:9)",
+    description: "6s skippable ad. Hook in 2s, message in 3s, brand close. 3 × 2s.",
+    build: () =>
+      baseProject({
+        name: "YouTube Pre-Roll",
+        aspect: "16:9",
+        sections: [
+          clipSection({
+            index: 1,
+            title: "Hook",
+            prompt: "attention-grabbing visual, surprising or beautiful, lands in first second",
+            motion: "fast push in, snap focus",
+            duration_s: 2,
+          }),
+          clipSection({
+            index: 2,
+            title: "Message",
+            prompt: "clear product or service in use, single benefit communicated visually",
+            motion: "smooth tracking shot",
+            duration_s: 2,
+          }),
+          clipSection({
+            index: 3,
+            title: "Brand",
+            prompt: "logo on brand-colored background, clean composition, lower third space",
+            motion: "static, slight breathing",
+            duration_s: 2,
+          }),
+        ],
+        vo: [
+          { id: newId("vo"), text: "Discover the difference.", voice: "default", start_s: 2, duration_s: 2 },
+        ],
+        graphics: [
+          {
+            id: newId("graphic"),
+            label: "Learn more",
+            text: "Learn more →",
+            start_s: 4,
+            duration_s: 2,
+            position: "bottom",
+          },
+        ],
       }),
   },
   {
     id: "tpl_tutorial_3shot",
-    name: "Tutorial — 3 shot",
-    description: "Intro + Demo + Outro · 16:9 · 5s each.",
+    name: "Tutorial — 3 shot (16:9)",
+    description: "Intro + Demo + Outro · 16:9 · 5s each. Clean studio look.",
     build: () =>
       baseProject({
         name: "Tutorial",
@@ -262,6 +341,16 @@ export const TEMPLATES: Template[] = [
             duration_s: 5,
           }),
         ],
+        graphics: [
+          {
+            id: newId("graphic"),
+            label: "Subscribe",
+            text: "Subscribe for more",
+            start_s: 12,
+            duration_s: 3,
+            position: "bottom",
+          },
+        ],
         brief: withBrief(
           {
             id: "brief_studio_natural",
@@ -276,82 +365,110 @@ export const TEMPLATES: Template[] = [
       }),
   },
   {
-    id: "tpl_dark_drop",
-    name: "Dark drop",
-    description: "Noir teaser · 4 × 4s · Bleach Bypass grade · neo-noir music.",
+    id: "tpl_brand_anthem",
+    name: "Brand Anthem (16:9)",
+    description: "Cinematic 30s brand spot. 6 × 5s. Big emotional arc with VO and graphic close.",
     build: () =>
       baseProject({
-        name: "Dark Drop",
+        name: "Brand Anthem",
+        aspect: "16:9",
         sections: [
           clipSection({
             index: 1,
             title: "Establish",
-            prompt: "rain-slick city street at night, neon reflections, anamorphic frame, neo-noir",
-            motion: "slow dolly forward, low angle",
-            duration_s: 4,
+            prompt: "sweeping wide establishing shot, golden hour, epic cinematic landscape",
+            motion: "slow aerial push forward",
+            duration_s: 5,
           }),
           clipSection({
             index: 2,
-            title: "Approach",
-            prompt: "silhouette walking under sodium streetlight, hard backlight, smoke",
-            motion: "tracking shot, parallax",
-            duration_s: 4,
+            title: "Human",
+            prompt: "intimate portrait of person at work, focused, dignified, natural light",
+            motion: "slow dolly side",
+            duration_s: 5,
           }),
-          titleSection({ index: 3, title: "Drop", text: "12.12", duration_s: 3 }),
+          clipSection({
+            index: 3,
+            title: "Craft",
+            prompt: "close-up of hands creating, tactile detail, shallow focus, warm tones",
+            motion: "smooth rack focus",
+            duration_s: 5,
+          }),
           clipSection({
             index: 4,
-            title: "Logo",
-            prompt: "logomark on dark background, single rim light, minimal, restrained",
-            motion: "static, slight breathing focus",
-            duration_s: 3,
+            title: "Process",
+            prompt: "mid-shot of tools in action, motion blur on hands, atmospheric",
+            motion: "subtle handheld energy",
+            duration_s: 5,
+          }),
+          clipSection({
+            index: 5,
+            title: "Result",
+            prompt: "finished work revealed, hero composition, triumphant lighting",
+            motion: "slow pull back to wide",
+            duration_s: 5,
+          }),
+          clipSection({
+            index: 6,
+            title: "Brand mark",
+            prompt: "brand logo on cinematic backdrop, lower-third space, restrained",
+            motion: "static, slow breathing",
+            duration_s: 5,
           }),
         ],
-        brief: withBrief(
+        vo: [
+          { id: newId("vo"), text: "Some things take time.", voice: "default", start_s: 0, duration_s: 4 },
+          { id: newId("vo"), text: "Made by hand. Made to last.", voice: "default", start_s: 10, duration_s: 5 },
+          { id: newId("vo"), text: "The standard you remember.", voice: "default", start_s: 20, duration_s: 5 },
+        ],
+        graphics: [
           {
-            id: "brief_neonoir",
-            name: "Neo-Noir",
-            visual:
-              "anamorphic 2.39:1, cool blue-cyan tones, lens flares, hard backlight, neo-noir, cinematic photography",
-            lighting: "hard backlight, neon spill",
-            camera: "anamorphic 50mm",
-            palette: "blue, cyan, teal",
-            avoid: "warm tones, vintage filters",
+            id: newId("graphic"),
+            label: "Tagline",
+            text: "Built for what comes next.",
+            start_s: 25,
+            duration_s: 5,
+            position: "center",
           },
-          "Neo-Noir",
-        ),
-        grade: withGrade(
+        ],
+      }),
+  },
+  {
+    id: "tpl_logo_reveal",
+    name: "Logo Reveal (1:1)",
+    description: "Dramatic 5s logo moment. Backdrop clip → brand mark with graphic.",
+    build: () =>
+      baseProject({
+        name: "Logo Reveal",
+        aspect: "1:1",
+        sections: [
+          clipSection({
+            index: 1,
+            title: "Backdrop",
+            prompt: "cinematic dark backdrop, single rim light, atmospheric haze, restrained",
+            motion: "slow push in, breathing focus",
+            duration_s: 5,
+          }),
+        ],
+        graphics: [
           {
-            id: "grade_noir_pulse",
-            name: "Noir Pulse",
-            adjustments: {
-              exposure: -0.1,
-              contrast: 38,
-              saturation: -65,
-              mids: "cool",
-              blacks: "crushed",
-              shadow_tint: "violet",
-            },
+            id: newId("graphic"),
+            label: "Logo",
+            text: "BRAND",
+            start_s: 1.5,
+            duration_s: 3.5,
+            position: "center",
           },
-          "Noir Pulse",
-        ),
-        music: withMusic(
-          {
-            id: "music_noir_pulse",
-            name: "Dark Pulse",
-            prompt: "neo-noir, dark synth pulse, sub bass, distant sirens, no melody",
-            model: "stable-audio",
-          },
-          "Dark Pulse",
-        ),
+        ],
         title_settings: withTitleStyle(
           {
-            id: "title_neon_mono",
-            name: "Neon Mono",
-            font: "JetBrains Mono Bold",
-            color: "#6dd47e",
+            id: "title_clean_serif",
+            name: "Clean Serif",
+            font: "Playfair Display Black",
+            color: "#f4f1ea",
             background_color: "#0a0908",
           },
-          "Neon Mono",
+          "Clean Serif",
         ),
       }),
   },

@@ -356,9 +356,11 @@ function templateIcon(id: string): string {
   switch (id) {
     case "tpl_blank": return "◯";
     case "tpl_product_reveal": return "◉";
-    case "tpl_title_card": return "T";
+    case "tpl_social_story": return "▣";
+    case "tpl_youtube_preroll": return "▶";
     case "tpl_tutorial_3shot": return "⌗";
-    case "tpl_dark_drop": return "◖";
+    case "tpl_brand_anthem": return "◈";
+    case "tpl_logo_reveal": return "◆";
     default: return "▪";
   }
 }
@@ -2040,7 +2042,7 @@ export default function HomePage() {
           </>
           ) : (
           <div className="lib-list">
-            {TEMPLATES.slice(0, 5).map((t) => (
+            {TEMPLATES.map((t) => (
               <button
                 key={t.id}
                 type="button"
