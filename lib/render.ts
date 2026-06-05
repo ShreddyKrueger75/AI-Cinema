@@ -1,7 +1,7 @@
 "use client";
 
 import type { Aspect, Project, Section, Transition } from "./types";
-import { buildCubeLUT } from "./grade";
+import { buildCubeLUT, buildFFmpegGradeFilter } from "./grade";
 
 export type RenderProgress = {
   phase: "loading-engine" | "fetching-assets" | "encoding" | "writing" | "done" | "error";
@@ -455,12 +455,14 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
 
   onProgress?.({ phase: "writing", pct: 92, message: "Muxing to MP4…" });
 
-  let lutName: string | null = null;
-  if (project.grade) {
-    lutName = "grade.cube";
-    await ffmpeg.writeFile(lutName, new TextEncoder().encode(buildCubeLUT(project.grade)));
-  }
-  const vfChain = lutName ? ["-vf", `lut3d=${lutName}`] : [];
+  // The minimal `@ffmpeg/core` wasm build doesn't include `lut3d`, so the
+  // previous LUT-file-on-disk approach was silently a no-op. Apply the grade
+  // via the built-in `eq` + `colorbalance` (+ optional `curves`) filters
+  // instead. `buildCubeLUT` is still kept around for the Export LUT button.
+  void buildCubeLUT;
+  const vfChain = project.grade
+    ? ["-vf", buildFFmpegGradeFilter(project.grade)]
+    : [];
 
   if (audioMixName) {
     await ffmpeg.exec([
@@ -497,7 +499,6 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
     "out.mp4",
     ...audioFiles,
     ...(audioMixName ? [audioMixName] : []),
-    ...(lutName ? [lutName] : []),
   ];
   for (const n of cleanup) {
     try {

@@ -69,6 +69,7 @@ export type StoreState = {
 
   updateBrief: (patch: Partial<Omit<Brief, "id">>) => void;
   updateGrade: (patch: Partial<Omit<Grade, "id">>) => void;
+  setGrade: (next: Partial<Omit<Grade, "id">>) => void;
   updateMusic: (patch: Partial<Omit<MusicTrack, "id">>) => void;
   updateTitleStyle: (patch: Partial<Omit<TitleStyle, "id">>) => void;
 
@@ -539,6 +540,27 @@ export const useStore = create<StoreState>()(
                 ...(patch.adjustments
                   ? { adjustments: { ...current.adjustments, ...patch.adjustments } }
                   : {}),
+              },
+            }),
+          };
+        }),
+
+      // Wholesale replace — used for preset load so old fields don't bleed
+      // into the new preset (e.g. a Warm Cinematic saved before `saturation`
+      // existed would leave saturation undefined when Film Noir loads,
+      // silently dropping its -65). updateGrade keeps the merge behavior for
+      // slider/field edits.
+      setGrade: (next) =>
+        set((state) => {
+          const id = state.project.grade?.id ?? newId("grade");
+          return {
+            project: touch({
+              ...state.project,
+              grade: {
+                id,
+                name: next.name ?? "Untitled grade",
+                adjustments: next.adjustments ?? {},
+                ...(next.thumbnail !== undefined ? { thumbnail: next.thumbnail } : {}),
               },
             }),
           };
