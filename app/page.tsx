@@ -520,8 +520,6 @@ export default function HomePage() {
   }, [resizingSection]);
   const [renderOpen, setRenderOpen] = useState(false);
   const [providersOpen, setProvidersOpen] = useState(false);
-  const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [projectsOpen, setProjectsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [playPosition, setPlayPosition] = useState<number | null>(null);
@@ -935,16 +933,6 @@ export default function HomePage() {
             >
               🔑 Add a key
             </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => {
-                dismissWelcome();
-                setTemplatesOpen(true);
-              }}
-            >
-              ⚀ Templates
-            </button>
             <button type="button" className="btn ghost" onClick={dismissWelcome}>
               ✕ Got it
             </button>
@@ -1010,143 +998,6 @@ export default function HomePage() {
           </div>
         </div>
         <div className="project-actions">
-          <span className="popover-anchor">
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() => setProjectsOpen((o) => !o)}
-              title="Project library"
-            >
-              ▤ Projects{projectStubs.length > 0 ? ` (${projectStubs.length})` : ""}
-            </button>
-            <Popover
-              open={projectsOpen}
-              onClose={() => setProjectsOpen(false)}
-              className="templates-menu"
-            >
-              <div className="templates-head">// PROJECT LIBRARY</div>
-              <button
-                type="button"
-                className="template-item"
-                onClick={() => {
-                  saveProjectToLibrary(project);
-                  setProjectsOpen(false);
-                }}
-              >
-                <span className="tpl-name">＋ Save current</span>
-                <span className="tpl-desc">save &ldquo;{project.name}&rdquo; · {project.duration_s.toFixed(1)}s · {project.sections.length} sections</span>
-              </button>
-              {projectStubs.length === 0 ? (
-                <div className="proj-empty">no saved projects yet</div>
-              ) : (
-                projectStubs.map((p) => {
-                  const isOpen = p.id === project.id;
-                  return (
-                    <div key={p.id} className="proj-row">
-                      <button
-                        type="button"
-                        className={`template-item proj-pick ${isOpen ? "active" : ""}`}
-                        onClick={() => {
-                          if (isOpen) {
-                            setProjectsOpen(false);
-                            return;
-                          }
-                          if (project.updated_at) saveProjectToLibrary(project);
-                          const loaded = loadProjectFromLibrary(p.id);
-                          if (loaded) setProject(loaded);
-                          setProjectsOpen(false);
-                        }}
-                      >
-                        <span className="tpl-name">
-                          {isOpen ? "● " : ""}{p.name}
-                        </span>
-                        <span className="tpl-desc">
-                          {p.aspect.replace(":", " : ")} · {p.duration_s.toFixed(1)}s · {p.sections.length} sections · {new Date(p.updated_at).toLocaleDateString()}
-                        </span>
-                      </button>
-                      <div className="proj-actions">
-                        <button
-                          type="button"
-                          className="btn ghost proj-act"
-                          title="Rename"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const next = prompt("Rename project:", p.name);
-                            if (next && next.trim()) {
-                              renameProjectInLibrary(p.id, next.trim());
-                              if (isOpen) updateProjectMeta({ name: next.trim() });
-                            }
-                          }}
-                        >
-                          ✎
-                        </button>
-                        <button
-                          type="button"
-                          className="btn ghost proj-act"
-                          title="Duplicate"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const copy = duplicateProjectInLibrary(p.id);
-                            if (copy) setProject(copy);
-                            setProjectsOpen(false);
-                          }}
-                        >
-                          ⎘
-                        </button>
-                        <button
-                          type="button"
-                          className="btn ghost proj-act danger"
-                          title="Delete"
-                          aria-label={`Delete ${p.name} from library`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm(`Delete "${p.name}" from library? (current project stays loaded)`)) {
-                              deleteProjectFromLibrary(p.id);
-                            }
-                          }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </Popover>
-          </span>
-          <span className="popover-anchor">
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() => setTemplatesOpen((o) => !o)}
-              title="Project templates"
-            >
-              ⚀ Templates
-            </button>
-            <Popover
-              open={templatesOpen}
-              onClose={() => setTemplatesOpen(false)}
-              className="templates-menu"
-            >
-              <div className="templates-head">// PROJECT TEMPLATES</div>
-              {TEMPLATES.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  className="template-item"
-                  onClick={() => {
-                    if (confirm(`Load "${t.name}"? Current project will be replaced.`)) {
-                      setProject(t.build());
-                    }
-                    setTemplatesOpen(false);
-                  }}
-                >
-                  <span className="tpl-name">{t.name}</span>
-                  <span className="tpl-desc">{t.description}</span>
-                </button>
-              ))}
-            </Popover>
-          </span>
           <button
             type="button"
             className="btn ghost"
@@ -1886,18 +1737,6 @@ export default function HomePage() {
               run: () => setProvidersOpen(true),
             },
             {
-              id: "templates",
-              label: "Browse project templates",
-              keywords: "templates starter blank product reveal",
-              run: () => setTemplatesOpen(true),
-            },
-            {
-              id: "projects",
-              label: "Open project library",
-              keywords: "projects library switch open",
-              run: () => setProjectsOpen(true),
-            },
-            {
               id: "reset",
               label: "Reset to default project",
               keywords: "reset wipe new",
@@ -1932,10 +1771,7 @@ export default function HomePage() {
       ) : null}
 
       <aside className="workspace-library">
-        <div className="lib-tabs">
-          <button type="button" className="lib-tab active"><span className="lib-tab-icon" aria-hidden>⊞</span> // PROJECTS</button>
-          <button type="button" className="lib-tab" onClick={() => setTemplatesOpen(true)}><span className="lib-tab-icon" aria-hidden>⚀</span> // TEMPLATES</button>
-        </div>
+        <div className="lib-head"><span className="lib-tab-icon" aria-hidden>⊞</span> // LIBRARY</div>
         <div className="lib-body">
           <button
             type="button"
