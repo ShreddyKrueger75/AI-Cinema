@@ -350,6 +350,49 @@ function canBrowserPlayAudio(file: File): { ok: boolean; reason?: string } {
   };
 }
 
+// Pull the first viewable frame of a video file out as a JPEG data URL so the
+// timeline thumb has something to render. The clip-thumb only looks at the
+// still's output_url, and importing a video would otherwise leave the still
+// empty (or worse, point at a broken URL from a prior import).
+function extractVideoPosterDataUrl(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    const url = URL.createObjectURL(file);
+    const cleanup = () => {
+      video.removeEventListener("loadeddata", onLoaded);
+      video.removeEventListener("error", onError);
+      URL.revokeObjectURL(url);
+    };
+    const onLoaded = () => {
+      try {
+        const w = video.videoWidth || 1280;
+        const h = video.videoHeight || 720;
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { cleanup(); resolve(null); return; }
+        ctx.drawImage(video, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        cleanup();
+        resolve(dataUrl);
+      } catch {
+        cleanup();
+        resolve(null);
+      }
+    };
+    const onError = () => { cleanup(); resolve(null); };
+    video.addEventListener("loadeddata", onLoaded);
+    video.addEventListener("error", onError);
+    video.src = url;
+    // Some browsers won't fire loadeddata until we seek
+    video.currentTime = 0.1;
+  });
+}
+
 function measureAudioDuration(src: string): Promise<number> {
   return new Promise((resolve, reject) => {
     const a = new Audio();
@@ -1396,15 +1439,22 @@ export default function HomePage() {
               onClick={async () => {
                 const file = await pickFile("image/*,video/*");
                 if (!file) return;
+                const isVideo = file.type.startsWith("video/");
                 const url = URL.createObjectURL(file);
+                const poster = isVideo ? await extractVideoPosterDataUrl(file) : null;
                 addClipSection(null);
+                useStore.getState().setActiveSection(null);
                 const sections = useStore.getState().project.sections;
                 const last = sections[sections.length - 1];
                 if (!last) return;
-                if (file.type.startsWith("video/")) {
+                if (isVideo) {
                   const ver = last.versions.find((v) => v.id === last.active_version_id);
                   if (ver && ver.kind === "clip") {
                     updateClipVersion(last.id, ver.id, { output_url: url });
+                  }
+                  if (poster) {
+                    const still = last.stills.find((s) => s.id === last.active_still_id);
+                    if (still) updateStill(last.id, still.id, { output_url: poster });
                   }
                   toast.success("Video imported", `${file.name} · new scene`);
                 } else {
@@ -1543,11 +1593,17 @@ export default function HomePage() {
                         e.stopPropagation();
                         const file = await pickFile("image/*,video/*");
                         if (!file) return;
+                        const isVid = file.type.startsWith("video/");
                         const url = URL.createObjectURL(file);
-                        if (file.type.startsWith("video/")) {
+                        const poster = isVid ? await extractVideoPosterDataUrl(file) : null;
+                        if (isVid) {
                           const ver = section.versions.find((v) => v.id === section.active_version_id);
                           if (ver && ver.kind === "clip") {
                             updateClipVersion(section.id, ver.id, { output_url: url });
+                            if (poster) {
+                              const still = section.stills.find((s) => s.id === section.active_still_id);
+                              if (still) updateStill(section.id, still.id, { output_url: poster });
+                            }
                             toast.success("Video imported", `${file.name} · clip ${section.index}`);
                           } else {
                             toast.error("Import failed", "Add a clip version first");
@@ -1775,6 +1831,7 @@ export default function HomePage() {
                 const url = URL.createObjectURL(file);
                 const measured = await measureAudioDuration(url).catch(() => null);
                 addVOSegment();
+                setEditingVOId(null);
                 const last = useStore.getState().project.vo_segments.slice(-1)[0];
                 if (last) {
                   const patch: Partial<Omit<VOSegment, "id">> = { output_url: url, text: file.name.replace(/\.[^.]+$/, "") };
@@ -1825,6 +1882,8 @@ export default function HomePage() {
                 const url = URL.createObjectURL(file);
                 const measured = await measureAudioDuration(url).catch(() => null);
                 addMusicSegment();
+                setEditingMusicId(null);
+                setMusicPanelOpen(false);
                 const last = (useStore.getState().project.music_segments ?? []).slice(-1)[0];
                 if (last) {
                   const patch: Partial<Omit<MusicSegment, "id">> = { output_url: url, name: file.name.replace(/\.[^.]+$/, "") };
@@ -2682,7 +2741,7 @@ function PreviewStage({
   const motionOutput =
     activeVersion && activeVersion.kind === "clip" ? activeVersion.output_url : undefined;
   const motionVideoUrl =
-    motionOutput && /^https?:\/\//.test(motionOutput) ? motionOutput : null;
+    motionOutput && /^(https?:|blob:|data:video)/.test(motionOutput) ? motionOutput : null;
 
   // Imperative video.play() / pause() — autoPlay doesn't re-trigger when the
   // attribute changes on an already-mounted element, and an effect run after a
@@ -4243,7 +4302,7 @@ function FlowPanel({
   const motionOutputUrl =
     activeVersion && activeVersion.kind === "clip" ? activeVersion.output_url : undefined;
   const motionVideoUrl =
-    motionOutputUrl && /^https?:\/\//.test(motionOutputUrl) ? motionOutputUrl : null;
+    motionOutputUrl && /^(https?:|blob:|data:video)/.test(motionOutputUrl) ? motionOutputUrl : null;
   const motionDirection =
     motionOutputUrl && motionOutputUrl.startsWith("kenburns:")
       ? (motionOutputUrl.slice("kenburns:".length) as "in" | "out" | "left" | "right")

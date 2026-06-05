@@ -629,11 +629,13 @@ button {
 
 .stage-video,
 .stage-img {
+  /* "contain" honours the source aspect ratio — letterboxes instead of cropping */
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background: #000;
   z-index: 0;
 }
 .stage-img.kb {
@@ -1279,7 +1281,7 @@ button {
 .clip-thumb.aspect-16-9 { aspect-ratio: 16 / 9; max-width: 320px; }
 .clip-thumb.aspect-1-1  { aspect-ratio: 1 / 1;  max-width: 200px; }
 .clip-thumb.aspect-9-16 { aspect-ratio: 9 / 16; max-width: 160px; }
-.clip-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.clip-thumb img { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
 .clip-thumb.empty { background: linear-gradient(135deg, #1a0c14, #281420); color: var(--color-fg-faint); font-style: italic; }
 .clip-thumb.title {
   font-weight: 800;
