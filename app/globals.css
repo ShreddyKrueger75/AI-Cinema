@@ -1531,6 +1531,43 @@ button.clip-version:hover { border-color: var(--color-blood-faint); }
   border: 1px solid var(--color-line-strong);
   background: var(--color-surface);
 }
+.imported-clip-panel {
+  margin-top: 0;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px 26px 24px;
+}
+.imported-clip-preview {
+  background: #000;
+  border: 1px solid var(--color-line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  max-height: 50vh;
+  overflow: hidden;
+}
+.imported-clip-media {
+  max-width: 100%;
+  max-height: 50vh;
+  object-fit: contain;
+  display: block;
+}
+.imported-clip-empty {
+  color: var(--color-fg-faint);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.btn.ghost.danger {
+  color: var(--color-blood);
+}
+.btn.ghost.danger:hover {
+  color: #fff;
+  background: var(--color-blood);
+}
 .flow-head {
   display: flex;
   justify-content: space-between;

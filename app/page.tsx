@@ -379,6 +379,19 @@ function canBrowserPlayAudio(file: File): { ok: boolean; reason?: string } {
 // timeline thumb has something to render. The clip-thumb only looks at the
 // still's output_url, and importing a video would otherwise leave the still
 // empty (or worse, point at a broken URL from a prior import).
+// A clip is "imported" when its active version output OR active still points at
+// local content (blob: from URL.createObjectURL or data:). For these we open a
+// simplified panel — re-import, rename, resize, delete — instead of the full
+// still/motion generation UI, since there's nothing to generate.
+function sectionHasImportedContent(section: Section): boolean {
+  const v = section.versions.find((x) => x.id === section.active_version_id);
+  if (v && v.kind === "clip" && v.output_url && /^(blob:|data:)/.test(v.output_url)) return true;
+  const stillId = v && v.kind === "clip" ? v.still_ref ?? section.active_still_id : section.active_still_id;
+  const still = stillId ? section.stills.find((s) => s.id === stillId) : null;
+  if (still?.output_url && /^(blob:|data:)/.test(still.output_url)) return true;
+  return false;
+}
+
 function extractVideoPosterDataUrl(file: File): Promise<string | null> {
   return new Promise((resolve) => {
     const video = document.createElement("video");
@@ -1999,13 +2012,20 @@ export default function HomePage() {
       {activeSection ? (
         <div className="flow-modal-overlay" onClick={() => setActiveSection(null)}>
           <div className="flow-modal" onClick={(e) => e.stopPropagation()}>
-            <FlowPanel
-              section={activeSection}
-              project={project}
-              providerKeys={providerKeys}
-              onOpenProviders={() => setProvidersOpen(true)}
-              onProviderKeyMissing={() => setProvidersOpen(true)}
-            />
+            {sectionHasImportedContent(activeSection) ? (
+              <ImportedClipPanel
+                section={activeSection}
+                onClose={() => setActiveSection(null)}
+              />
+            ) : (
+              <FlowPanel
+                section={activeSection}
+                project={project}
+                providerKeys={providerKeys}
+                onOpenProviders={() => setProvidersOpen(true)}
+                onProviderKeyMissing={() => setProvidersOpen(true)}
+              />
+            )}
           </div>
         </div>
       ) : null}
@@ -4165,6 +4185,129 @@ function MusicSegmentEditor({
           onClick={onGenerate}
         >
           {job?.status === "running" ? "● Generating…" : "⏵ Generate music"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────── IMPORTED CLIP PANEL ───────────── */
+// Simpler editor for clips whose content was imported (not generated).
+// Shows a preview, lets the user rename, change duration, re-import,
+// or remove the section. No still/motion generation UI.
+function ImportedClipPanel({
+  section,
+  onClose,
+}: {
+  section: Section;
+  onClose: () => void;
+}) {
+  const updateSection = useStore((s) => s.updateSection);
+  const updateStill = useStore((s) => s.updateStill);
+  const updateClipVersion = useStore((s) => s.updateClipVersion);
+  const removeSection = useStore((s) => s.removeSection);
+
+  const activeVersion = section.versions.find((v) => v.id === section.active_version_id) ?? null;
+  const motionOutput =
+    activeVersion && activeVersion.kind === "clip" ? activeVersion.output_url : undefined;
+  const isVideoUrl =
+    motionOutput && /^(blob:|data:video|https?:)/.test(motionOutput) ? motionOutput : null;
+  const stillId =
+    activeVersion && activeVersion.kind === "clip"
+      ? activeVersion.still_ref ?? section.active_still_id
+      : section.active_still_id;
+  const still = stillId ? section.stills.find((s) => s.id === stillId) ?? null : null;
+  const stillUrl = still?.output_url ?? null;
+
+  const reimport = async () => {
+    const file = await pickFile("image/*,video/*,.mp4,.m4v,.mov,.webm,.ogv,.ogg");
+    if (!file) return;
+    const isVid =
+      file.type.startsWith("video/") ||
+      /\.(mp4|m4v|mov|webm|ogv|ogg|3gp|3g2)$/i.test(file.name);
+    if (isVid) {
+      const check = canBrowserPlayVideo(file);
+      if (!check.ok) { toast.error("Unsupported video format", check.reason); return; }
+    }
+    const url = URL.createObjectURL(file);
+    if (isVid) {
+      if (activeVersion && activeVersion.kind === "clip") {
+        updateClipVersion(section.id, activeVersion.id, { output_url: url });
+      }
+      const poster = await extractVideoPosterDataUrl(file);
+      if (poster && still) {
+        updateStill(section.id, still.id, { output_url: poster });
+      }
+      toast.success("Video re-imported", file.name);
+    } else {
+      if (still) {
+        updateStill(section.id, still.id, { output_url: url });
+        if (activeVersion && activeVersion.kind === "clip" && activeVersion.output_url) {
+          updateClipVersion(section.id, activeVersion.id, { output_url: undefined });
+        }
+        toast.success("Image re-imported", file.name);
+      }
+    }
+  };
+
+  return (
+    <div className="flow-panel imported-clip-panel">
+      <div className="editor-head">
+        <span>
+          // IMPORTED CLIP · {section.index.toString().padStart(2, "0")} {section.title}
+        </span>
+        <button type="button" className="btn ghost" onClick={onClose}>✕ Close</button>
+      </div>
+      <div className="imported-clip-preview">
+        {isVideoUrl ? (
+          <video src={isVideoUrl} controls className="imported-clip-media" />
+        ) : stillUrl ? (
+          <img src={stillUrl} alt={section.title} className="imported-clip-media" />
+        ) : (
+          <div className="imported-clip-empty">no preview</div>
+        )}
+      </div>
+      <Field label="Title">
+        <input
+          className="field-input"
+          value={section.title}
+          onChange={(e) => updateSection(section.id, { title: e.target.value })}
+          placeholder="Clip title"
+        />
+      </Field>
+      <Field label={`Duration ${section.duration_s.toFixed(1)}s`}>
+        <input
+          type="range"
+          min={0.5}
+          max={30}
+          step={0.5}
+          value={section.duration_s}
+          onChange={(e) => updateSection(section.id, { duration_s: parseFloat(e.target.value) })}
+        />
+      </Field>
+      <div className="gen-row">
+        <button type="button" className="btn ghost" onClick={reimport}>
+          ▤ Re-import
+        </button>
+        <button
+          type="button"
+          className="btn ghost danger"
+          onClick={() => {
+            confirmAsk({
+              title: `Delete "${section.title}"?`,
+              message: "Removes this imported clip from the timeline.",
+              confirm_label: "Delete",
+              cancel_label: "Keep",
+              destructive: true,
+              onConfirm: () => {
+                removeSection(section.id);
+                onClose();
+                toast.info(`Removed "${section.title}"`);
+              },
+            });
+          }}
+        >
+          ✕ Remove clip
         </button>
       </div>
     </div>
