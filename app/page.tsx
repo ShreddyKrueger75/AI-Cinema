@@ -533,6 +533,29 @@ export default function HomePage() {
   const playRAFRef = useRef<number | null>(null);
   const playStartedAtRef = useRef<number>(0);
 
+  const [dragGraphicState, setDragGraphicState] = useState<{
+    id: string;
+    rowLeft: number;
+    rowWidth: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!dragGraphicState) return;
+    const local = dragGraphicState;
+    function onMove(e: PointerEvent) {
+      const pct = Math.max(0, Math.min(1, (e.clientX - local.rowLeft) / local.rowWidth));
+      const newStart = Math.max(0, pct * useStore.getState().project.duration_s - 0.25);
+      useStore.getState().updateGraphic(local.id, { start_s: parseFloat(newStart.toFixed(2)) });
+    }
+    function onUp() { setDragGraphicState(null); }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [dragGraphicState]);
+
   const stopPreview = useCallback(() => {
     if (playTimerRef.current) clearTimeout(playTimerRef.current);
     if (playRAFRef.current !== null) cancelAnimationFrame(playRAFRef.current);
@@ -681,6 +704,23 @@ export default function HomePage() {
   const togglePreview = playPosition !== null ? stopPreview : startPreview;
   const previewSectionId =
     playPosition !== null ? project.sections[playPosition]?.id ?? null : null;
+
+  const currentPreviewIndex = useMemo(() => {
+    if (playPosition !== null) return playPosition;
+    const i = project.sections.findIndex((s) => s.id === activeSectionId);
+    return i >= 0 ? i : 0;
+  }, [playPosition, activeSectionId, project.sections]);
+
+  const previewStartSeconds = useMemo(
+    () => project.sections.slice(0, currentPreviewIndex).reduce((acc, s) => acc + s.duration_s, 0),
+    [project.sections, currentPreviewIndex],
+  );
+
+  const activeSectionStartS = useMemo(() => {
+    const idx = project.sections.findIndex((s) => s.id === activeSectionId);
+    if (idx < 0) return playheadSeconds;
+    return project.sections.slice(0, idx).reduce((a, s) => a + s.duration_s, 0);
+  }, [project.sections, activeSectionId, playheadSeconds]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -1155,15 +1195,22 @@ export default function HomePage() {
           />
         </LookSlot>
         </div>
+        <StageControls
+          project={project}
+          currentIndex={currentPreviewIndex}
+          startSeconds={previewStartSeconds}
+          isPlaying={playPosition !== null}
+          onTogglePlay={togglePreview}
+          onStop={stopPreview}
+        />
       </div>
 
       <PreviewStage
         project={project}
-        playPosition={playPosition}
-        activeSectionId={activeSectionId}
+        currentIndex={currentPreviewIndex}
+        startSeconds={previewStartSeconds}
         isPlaying={playPosition !== null}
         onTogglePlay={togglePreview}
-        onStop={stopPreview}
       />
 
       <div className="timeline-wrap">
@@ -1211,8 +1258,8 @@ export default function HomePage() {
           <button
             type="button"
             className="tl-row-add"
-            onClick={() => addGraphic(playheadSeconds || 0)}
-            title="Add a graphic overlay at the current time"
+            onClick={() => addGraphic(activeSectionStartS)}
+            title="Add a graphic overlay at the current section"
           >
             + Graphic
           </button>
@@ -1231,42 +1278,51 @@ export default function HomePage() {
               return (
                 <div
                   key={g.id}
-                  className={`graphic-block ${isEditing ? "active" : ""}`}
+                  className={`graphic-block ${isEditing ? "active" : ""} ${dragGraphicState?.id === g.id ? "dragging" : ""}`}
                   style={{ left: `${left}%`, width: `${width}%` }}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (dragGraphicState) return;
                     setEditingGraphicId(isEditing ? null : g.id);
                   }}
-                  title={`${g.text} · ${g.start_s.toFixed(1)}s for ${g.duration_s.toFixed(1)}s`}
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.stopPropagation();
+                    const row = e.currentTarget.closest(".graphics-overlay-row") as HTMLElement | null;
+                    if (!row) return;
+                    const rect = row.getBoundingClientRect();
+                    setDragGraphicState({ id: g.id, rowLeft: rect.left, rowWidth: rect.width });
+                    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                  }}
+                  title={`${g.text} · ${g.start_s.toFixed(1)}s for ${g.duration_s.toFixed(1)}s · drag to move`}
                 >
-                  <span className="graphic-block-text">{g.text}</span>
+                  <span className="graphic-block-text">{g.text || "graphic"}</span>
                   <span className="graphic-block-time">
                     {g.start_s.toFixed(1)}s · {g.duration_s.toFixed(1)}s
                   </span>
-                  {isEditing ? (
-                    <div className="graphic-pop-wrap">
-                      <Popover
-                        open
-                        onClose={() => setEditingGraphicId(null)}
-                        className="vo-popover"
-                      >
-                        <GraphicOverlayEditor
-                          overlay={g}
-                          projectDuration={project.duration_s}
-                          onChange={(patch) => updateGraphic(g.id, patch)}
-                          onRemove={() => {
-                            removeGraphic(g.id);
-                            setEditingGraphicId(null);
-                          }}
-                        />
-                      </Popover>
-                    </div>
-                  ) : null}
                 </div>
               );
             })
           )}
         </div>
+
+        {editingGraphicId ? (() => {
+          const eg = (project.graphics ?? []).find((g) => g.id === editingGraphicId);
+          if (!eg) return null;
+          return (
+            <div className="graphic-inline-editor">
+              <GraphicOverlayEditor
+                overlay={eg}
+                projectDuration={project.duration_s}
+                onChange={(patch) => updateGraphic(eg.id, patch)}
+                onRemove={() => {
+                  removeGraphic(eg.id);
+                  setEditingGraphicId(null);
+                }}
+              />
+            </div>
+          );
+        })() : null}
 
         <div className="tl-row-label">// VIDEO</div>
         <div
@@ -2150,32 +2206,105 @@ function VOTrack({
   );
 }
 
-/* ───────────── PREVIEW STAGE ───────────── */
+/* ───────────── STAGE CONTROLS ───────────── */
 
-function PreviewStage({
+function StageControls({
   project,
-  playPosition,
-  activeSectionId,
+  currentIndex,
+  startSeconds,
   isPlaying,
   onTogglePlay,
   onStop,
 }: {
   project: Project;
-  playPosition: number | null;
-  activeSectionId: string | null;
+  currentIndex: number;
+  startSeconds: number;
   isPlaying: boolean;
   onTogglePlay: () => void;
   onStop: () => void;
 }) {
   const setActiveSection = useStore((s) => s.setActiveSection);
-  const updateProjectMeta = useStore((s) => s.updateProjectMeta);
+  const total = project.duration_s;
 
-  const currentIndex = useMemo(() => {
-    if (playPosition !== null) return playPosition;
-    const i = project.sections.findIndex((s) => s.id === activeSectionId);
-    return i >= 0 ? i : 0;
-  }, [playPosition, activeSectionId, project.sections]);
+  const handleSeek = (idx: number) => {
+    if (!project.sections.length) return;
+    const next = ((idx % project.sections.length) + project.sections.length) % project.sections.length;
+    setActiveSection(project.sections[next].id);
+  };
 
+  return (
+    <div className="stage-controls" onClick={(e) => e.stopPropagation()}>
+      <div className="stage-scrubber" role="presentation">
+        {project.sections.map((s, i) => (
+          <button
+            key={s.id}
+            type="button"
+            className={`stage-scrub-seg ${i === currentIndex ? "active" : ""} ${i < currentIndex ? "past" : ""}`}
+            style={{ flex: Math.max(0.1, s.duration_s) }}
+            onClick={() => setActiveSection(s.id)}
+            title={`${s.index.toString().padStart(2, "0")} ${s.title} · ${formatTimecode(project.sections.slice(0, i).reduce((a, x) => a + x.duration_s, 0))}`}
+            aria-label={`Jump to section ${s.index} ${s.title}`}
+          />
+        ))}
+      </div>
+      <div className="stage-controls-row">
+        <button type="button" className="stage-iconbtn" title="Previous" aria-label="Previous section" onClick={() => handleSeek(currentIndex - 1)}>⏮</button>
+        <button
+          type="button"
+          className="stage-iconbtn primary"
+          title={isPlaying ? "Pause (Space)" : "Play (Space)"}
+          aria-label={isPlaying ? "Pause preview" : "Play preview"}
+          onClick={onTogglePlay}
+        >
+          {isPlaying ? "❚❚" : "▶"}
+        </button>
+        <button type="button" className="stage-iconbtn" title="Next" aria-label="Next section" onClick={() => handleSeek(currentIndex + 1)}>⏭</button>
+        {isPlaying ? (
+          <button type="button" className="stage-iconbtn" title="Stop" aria-label="Stop preview" onClick={onStop}>◼</button>
+        ) : null}
+        <span className="stage-controls-time">
+          {formatTimecode(startSeconds)}
+          <span className="stage-divider"> / </span>
+          {formatTimecode(total)}
+        </span>
+        <div className="stage-controls-spacer" />
+        <button
+          type="button"
+          className="stage-iconbtn"
+          title="Fullscreen"
+          aria-label="Toggle fullscreen"
+          onClick={() => {
+            const canvas = document.querySelector(".stage-canvas") as HTMLElement | null;
+            if (!canvas) return;
+            if (document.fullscreenElement) {
+              document.exitFullscreen().catch((err: unknown) => toast.warn("Couldn't exit fullscreen", String(err)));
+              return;
+            }
+            canvas.requestFullscreen?.().catch((err: unknown) => toast.warn("Fullscreen blocked", String(err)));
+          }}
+        >
+          ⛶
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────── PREVIEW STAGE ───────────── */
+
+function PreviewStage({
+  project,
+  currentIndex,
+  startSeconds,
+  isPlaying,
+  onTogglePlay,
+}: {
+  project: Project;
+  currentIndex: number;
+  startSeconds: number;
+  isPlaying: boolean;
+  onTogglePlay: () => void;
+}) {
   const section = project.sections[currentIndex];
   if (!section) {
     return (
@@ -2201,22 +2330,12 @@ function PreviewStage({
       : null;
   const stillUrl = referencedStill?.output_url ?? null;
 
-  const startSeconds = project.sections
-    .slice(0, currentIndex)
-    .reduce((acc, s) => acc + s.duration_s, 0);
-  const total = project.duration_s;
-
   const aspectRatio =
     project.aspect === "16:9" ? "16 / 9" : project.aspect === "1:1" ? "1 / 1" : "9 / 16";
 
   const activeOverlays = (project.graphics ?? []).filter(
     (g) => startSeconds >= g.start_s && startSeconds < g.start_s + g.duration_s,
   );
-
-  const handleSeekToSection = (idx: number) => {
-    const next = ((idx % project.sections.length) + project.sections.length) % project.sections.length;
-    setActiveSection(project.sections[next].id);
-  };
 
   return (
     <div className="preview-stage">
@@ -2297,105 +2416,6 @@ function PreviewStage({
         </div>
       </div>
 
-      {/* Control panel below the canvas */}
-      <div className="stage-controls" onClick={(e) => e.stopPropagation()}>
-        <div className="stage-scrubber" role="presentation">
-          {project.sections.map((s, i) => (
-            <button
-              key={s.id}
-              type="button"
-              className={`stage-scrub-seg ${i === currentIndex ? "active" : ""} ${i < currentIndex ? "past" : ""}`}
-              style={{ flex: Math.max(0.1, s.duration_s) }}
-              onClick={() => setActiveSection(s.id)}
-              title={`Jump to ${s.index.toString().padStart(2, "0")} ${s.title} · ${formatTimecode(project.sections.slice(0, i).reduce((a, x) => a + x.duration_s, 0))}`}
-              aria-label={`Jump to section ${s.index} ${s.title}`}
-            />
-          ))}
-        </div>
-        <div className="stage-controls-row">
-          <button
-            type="button"
-            className="stage-iconbtn"
-            title="Previous section"
-            aria-label="Previous section"
-            onClick={() => handleSeekToSection(currentIndex - 1)}
-          >
-            ⏮
-          </button>
-          <button
-            type="button"
-            className="stage-iconbtn primary"
-            title={isPlaying ? "Pause (Space)" : "Play (Space)"}
-            aria-label={isPlaying ? "Pause preview" : "Play preview"}
-            onClick={onTogglePlay}
-          >
-            {isPlaying ? "❚❚" : "▶"}
-          </button>
-          <button
-            type="button"
-            className="stage-iconbtn"
-            title="Next section"
-            aria-label="Next section"
-            onClick={() => handleSeekToSection(currentIndex + 1)}
-          >
-            ⏭
-          </button>
-          {isPlaying ? (
-            <button
-              type="button"
-              className="stage-iconbtn"
-              title="Stop"
-              aria-label="Stop preview"
-              onClick={onStop}
-            >
-              ◼
-            </button>
-          ) : null}
-          <span className="stage-controls-time">
-            {formatTimecode(startSeconds)}
-            <span className="stage-divider">/</span>
-            {formatTimecode(total)}
-          </span>
-          <div className="stage-controls-spacer" />
-          <button
-            type="button"
-            className="stage-iconbtn"
-            title="Fullscreen"
-            aria-label="Toggle fullscreen"
-            onClick={() => {
-              const canvas = document.querySelector(".stage-canvas") as HTMLElement | null;
-              if (!canvas) return;
-              if (document.fullscreenElement) {
-                document.exitFullscreen().catch((err) => {
-                  toast.warn("Couldn't exit fullscreen", err?.message ?? String(err));
-                });
-                return;
-              }
-              const req = canvas.requestFullscreen?.bind(canvas);
-              if (!req) {
-                toast.warn("Fullscreen unsupported", "This browser doesn't expose requestFullscreen on the preview canvas.");
-                return;
-              }
-              req().catch((err: unknown) => {
-                const msg = err instanceof Error ? err.message : String(err);
-                toast.warn("Fullscreen blocked", msg);
-              });
-            }}
-          >
-            ⛶
-          </button>
-        </div>
-      </div>
-
-      <div className="stage-meta">
-        <div className="stage-meta-info">
-          <span>{section.index.toString().padStart(2, "0")} / {project.sections.length}</span>
-          <span className="stage-divider">·</span>
-          <span>{section.title}</span>
-          <span className="stage-divider">·</span>
-          <span>{section.duration_s.toFixed(1)}s</span>
-        </div>
-      </div>
     </div>
   );
 }
