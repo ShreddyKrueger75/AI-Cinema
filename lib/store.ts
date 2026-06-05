@@ -191,11 +191,11 @@ export const useStore = create<StoreState>()(
   persist(
     (set) => ({
       project: createDefaultProject(),
-      activeSectionId: "section_03",
+      activeSectionId: null,
 
       setProject: (project) => set({ project: touch(project) }),
 
-      resetProject: () => set({ project: createDefaultProject(), activeSectionId: "section_03" }),
+      resetProject: () => set({ project: createDefaultProject(), activeSectionId: null }),
 
       updateProjectMeta: (patch) =>
         set((state) => ({
@@ -661,7 +661,12 @@ export const useStore = create<StoreState>()(
       name: STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
-      version: 2,
+      version: 3,
+      migrate: (persisted, version) => {
+        const next = (persisted ?? {}) as Partial<StoreState>;
+        if (version < 3) next.activeSectionId = null;
+        return next as StoreState;
+      },
     },
   ),
 );
