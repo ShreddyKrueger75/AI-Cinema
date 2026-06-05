@@ -307,6 +307,14 @@ function pickFile(accept: string): Promise<File | null> {
   });
 }
 
+function projectHasGeneratedContent(project: Project): boolean {
+  return project.sections.some(
+    (s) =>
+      s.stills.some((st) => !!st.output_url) ||
+      s.versions.some((v) => v.kind === "clip" && !!v.output_url),
+  );
+}
+
 function templateIcon(id: string): string {
   switch (id) {
     case "tpl_blank": return "◯";
@@ -800,6 +808,25 @@ export default function HomePage() {
     toast.success(".cube LUT exported", `${project.grade.name} · 17³ entries`);
   }, [project.grade]);
 
+  const requestAspectChange = useCallback(
+    (next: Aspect) => {
+      if (next === project.aspect) return;
+      if (!projectHasGeneratedContent(project)) {
+        updateProjectMeta({ aspect: next });
+        return;
+      }
+      confirmAsk({
+        title: `Switch aspect to ${next}?`,
+        message: `Your existing stills and clips were generated at ${project.aspect}. They'll stay on the timeline but won't match the new aspect — re-generating them at ${next} will use your provider API credits (Replicate, Runway, etc.) one clip at a time. AI Cinema itself stays free.`,
+        confirm_label: `Switch to ${next}`,
+        cancel_label: "Keep current",
+        destructive: false,
+        onConfirm: () => updateProjectMeta({ aspect: next }),
+      });
+    },
+    [project, updateProjectMeta],
+  );
+
   const transitionsByTo = useMemo(() => {
     const m = new Map<string, Transition>();
     for (const t of project.transitions) m.set(t.to_section_id, t);
@@ -848,6 +875,24 @@ export default function HomePage() {
           </button>
         </div>
         <div className="right">
+          <button
+            type="button"
+            className="status-link"
+            onClick={() => setProvidersOpen(true)}
+            title="Manage provider API keys"
+            aria-label="Open Providers"
+          >
+            🔑 KEYS{configuredKeyCount > 0 ? ` (${configuredKeyCount})` : ""}
+          </button>
+          <button
+            type="button"
+            className="status-link"
+            onClick={() => setHelpOpen(true)}
+            title="Help & keyboard shortcuts"
+            aria-label="Open help"
+          >
+            ?
+          </button>
           <span>{hydrated ? "STATE // PERSISTED" : "STATE // EPHEMERAL"}</span>
           <UserStatusChip />
         </div>
@@ -855,15 +900,14 @@ export default function HomePage() {
 
       <div className="hero">
         <span className="hero-brand">Cinema <span className="ai">AI</span></span>
-        <button
-          type="button"
+        <a
           className="cta-hero"
-          onClick={() => setTemplatesOpen(true)}
-          title="Pick a template to start fast"
-          aria-label="Open templates to start a new project"
+          href="/signup"
+          title="Create a free account to save projects across devices"
+          aria-label="Sign up for a free account"
         >
-          Let&apos;s Go!
-        </button>
+          Let&apos;s Go! <span className="cta-hero-sub">— it&apos;s free</span>
+        </a>
       </div>
 
       {showWelcome ? (
@@ -952,7 +996,7 @@ export default function HomePage() {
                     type="button"
                     className={`menu-item ${a === project.aspect ? "active" : ""}`}
                     onClick={() => {
-                      updateProjectMeta({ aspect: a });
+                      requestAspectChange(a);
                       setAspectMenuOpen(false);
                     }}
                   >
@@ -1106,14 +1150,6 @@ export default function HomePage() {
           <button
             type="button"
             className="btn ghost"
-            onClick={() => setProvidersOpen(true)}
-            title="API keys"
-          >
-            🔑 Keys{configuredKeyCount > 0 ? ` (${configuredKeyCount})` : ""}
-          </button>
-          <button
-            type="button"
-            className="btn ghost"
             onClick={handleUndo}
             disabled={historyPastLen === 0}
             title="Undo (⌘Z)"
@@ -1132,15 +1168,6 @@ export default function HomePage() {
             ↷
           </button>
           <button type="button" className="btn ghost" onClick={handleReset} title="Reset to defaults">↺ Reset</button>
-          <button
-            type="button"
-            className="btn ghost"
-            onClick={() => setHelpOpen(true)}
-            title="Keyboard shortcuts (?)"
-            aria-label="Keyboard shortcuts (?)"
-          >
-            ?
-          </button>
           <button type="button" className="btn ghost" onClick={handleImport} title="Import a project JSON" aria-label="Import project JSON">⇧ Import</button>
           <button type="button" className="btn ghost" onClick={handleExport} title="Export the project as JSON" aria-label="Export project JSON">⇩ Export</button>
           <button
@@ -1166,7 +1193,7 @@ export default function HomePage() {
               role="radio"
               aria-checked={project.aspect === a}
               className={`aspect-pill ${project.aspect === a ? "active" : ""} aspect-${a.replace(":", "-")}`}
-              onClick={() => updateProjectMeta({ aspect: a })}
+              onClick={() => requestAspectChange(a)}
               title={`Set whole video to ${a}`}
             >
               <span className={`aspect-glyph glyph-${a.replace(":", "-")}`} aria-hidden />
@@ -1980,11 +2007,17 @@ export default function HomePage() {
                 onClick={() => {
                   confirmAsk({
                     title: `Load ${t.name}?`,
-                    message: "This replaces your current timeline with the template.",
-                    confirm_label: "Load template",
-                    cancel_label: "Keep editing",
-                    destructive: true,
-                    onConfirm: () => setProject(t.build()),
+                    message: `This replaces your current project with the template. Want to save your current project as a saved-project (in // SAVED) first so you can come back to it?`,
+                    confirm_label: "Save current & load",
+                    alt_label: "Load without saving",
+                    cancel_label: "Cancel",
+                    destructive: false,
+                    onConfirm: () => {
+                      saveProjectToLibrary(project);
+                      toast.success("Saved current to library", `${project.name} → // SAVED`);
+                      setProject(t.build());
+                    },
+                    onAlt: () => setProject(t.build()),
                   });
                 }}
               >
@@ -2493,6 +2526,7 @@ function TitleCardLive({
 function ConfirmViewport() {
   const prompt = useConfirm((s) => s.prompt);
   const resolve = useConfirm((s) => s.resolve);
+  const resolveAlt = useConfirm((s) => s.resolveAlt);
   const cancel = useConfirm((s) => s.cancel);
   if (!prompt) return null;
   const titleId = `confirm-title-${prompt.id}`;
@@ -2518,6 +2552,15 @@ function ConfirmViewport() {
           >
             {prompt.cancel_label}
           </button>
+          {prompt.alt_label && prompt.onAlt ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => { resolveAlt(); }}
+            >
+              {prompt.alt_label}
+            </button>
+          ) : null}
           <button
             type="button"
             className={`btn ${prompt.destructive ? "danger" : "primary"}`}
@@ -4962,9 +5005,9 @@ function CommandPalette({
 function HelpDialog({ onClose }: { onClose: () => void }) {
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform || "");
   const mod = isMac ? "⌘" : "Ctrl";
-  const groups: { title: string; items: { keys: string[]; label: string }[] }[] = [
+  const shortcutGroups: { title: string; items: { keys: string[]; label: string }[] }[] = [
     {
-      title: "// EDITING",
+      title: "Editing",
       items: [
         { keys: [`${mod} Z`], label: "Undo" },
         { keys: [`⇧ ${mod} Z`, `${mod} Y`], label: "Redo" },
@@ -4974,7 +5017,7 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
       ],
     },
     {
-      title: "// NAVIGATION",
+      title: "Navigation",
       items: [
         { keys: ["←"], label: "Previous section" },
         { keys: ["→"], label: "Next section" },
@@ -4982,55 +5025,117 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
       ],
     },
     {
-      title: "// PLAYBACK",
+      title: "Playback & command",
       items: [
         { keys: ["Space"], label: "Preview / stop timeline" },
-      ],
-    },
-    {
-      title: "// COMMAND",
-      items: [
         { keys: [`${mod} K`], label: "Command palette" },
-      ],
-    },
-    {
-      title: "// HELP",
-      items: [
         { keys: ["?", "/"], label: "Open this dialog" },
       ],
     },
   ];
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 760 }}>
         <div className="modal-head">
           <div>
-            <div className="modal-title">// SHORTCUTS</div>
-            <div className="modal-sub">Keys are ignored while typing in inputs</div>
+            <div className="modal-title">// HELP</div>
+            <div className="modal-sub">How AI Cinema works · keys live in your browser · free to use</div>
           </div>
-          <button type="button" className="btn ghost" onClick={onClose}>✕ Close</button>
+          <button type="button" className="btn ghost" onClick={onClose} aria-label="Close help">✕ Close</button>
         </div>
-        <div className="modal-body">
-          {groups.map((g) => (
-            <div key={g.title} className="modal-section">
-              <div className="modal-section-title">{g.title}</div>
-              <div className="shortcut-grid">
-                {g.items.map((item) => (
-                  <div key={item.label} className="shortcut-row">
-                    <div className="shortcut-keys">
-                      {item.keys.map((k, i) => (
-                        <span key={i} className="kbd">{k}</span>
-                      ))}
-                    </div>
-                    <div className="shortcut-label">{item.label}</div>
+        <div className="modal-body help-body">
+          <div className="modal-section">
+            <div className="modal-section-title">// GETTING STARTED</div>
+            <ol className="help-list">
+              <li><strong>Pick a template</strong> in the // TEMPLATES list on the right sidebar — or start blank.</li>
+              <li><strong>Set your aspect</strong> in // PROJECT SETTINGS (9:16 vertical, 16:9 wide, 1:1 square). All generation respects this.</li>
+              <li><strong>Click any section</strong> on the timeline. The scene editor opens as a modal with two sides — STILL on the left, MOTION on the right.</li>
+              <li><strong>Write a still prompt</strong>, pick a model, hit <span className="kbd">✦ Generate still</span>. Free Pollinations is the default; add a Replicate key for reliable Flux / SDXL.</li>
+              <li><strong>Write a motion prompt</strong>, pick Ken Burns (free) or Runway / Replicate motion (paid keys), hit <span className="kbd">✦ Generate motion</span>.</li>
+              <li><strong>Iterate</strong>: each section keeps multiple <em>versions</em> — try variants without losing the previous take.</li>
+              <li><strong>Render</strong> the whole thing as MP4 via <span className="kbd">⤓ Render MP4</span> when the timeline is ready.</li>
+            </ol>
+          </div>
+
+          <div className="modal-section">
+            <div className="modal-section-title">// TOOLS</div>
+            <dl className="help-defs">
+              <dt><span className="slot-icon">✎</span> // BRIEF</dt>
+              <dd>Project-wide visual direction (camera, lens, lighting, palette). Injected into every still prompt — set it once, every section inherits.</dd>
+              <dt><span className="slot-icon">◐</span> // GRADE</dt>
+              <dd>Final-pass color: exposure, contrast, warmth, crushed blacks. Applied via FFmpeg LUT at render time and exportable as a .cube file for Premiere / Resolve.</dd>
+              <dt><span className="slot-icon">♫</span> // MUSIC</dt>
+              <dd>Score for the whole project. Generate via ElevenLabs or Stable Audio, or <span className="kbd">▤ IMPORT</span> your own mp3/wav. Auto-ducks under VO at −6dB.</dd>
+              <dt><span className="slot-icon">T</span> // TITLE STYLE</dt>
+              <dd>Font, color, and background for any title-card section. Pick from JetBrains Mono / Inter / Knewave.</dd>
+              <dt><span className="lib-tab-icon">⊞</span> // PROJECTS</dt>
+              <dd>Your saved snapshots. <span className="kbd">{mod} S</span> saves the current state; click a saved row to load it (the current project is auto-snapshotted first).</dd>
+              <dt><span className="lib-tab-icon">⚀</span> // TEMPLATES</dt>
+              <dd>Starter timelines: Blank, Product Reveal, Title card, Tutorial 3-shot, Dark drop.</dd>
+            </dl>
+          </div>
+
+          <div className="modal-section">
+            <div className="modal-section-title">// IMPORT YOUR OWN MEDIA</div>
+            <ul className="help-list">
+              <li>Each clip card has a <span className="kbd">▤ IMPORT</span> chip — drop in an image to set the still or a video to bypass generation entirely.</li>
+              <li>The music bed has its own <span className="kbd">▤ IMPORT</span> — the filename becomes the track name.</li>
+              <li>VO segments get a <span className="kbd">▤ Import</span> action inside their editor — narrate yourself instead of generating.</li>
+            </ul>
+          </div>
+
+          <div className="modal-section">
+            <div className="modal-section-title">// PROVIDERS</div>
+            <dl className="help-defs">
+              <dt>Pollinations <span className="help-tag free">FREE</span></dt>
+              <dd>Free Flux stills. Often queued (1 request per IP) — falls back to Flux Schnell automatically if a Replicate key is configured.</dd>
+              <dt>Replicate <span className="help-tag">KEY</span></dt>
+              <dd>Flux 1.1 Pro, Flux Schnell, SDXL, Ideogram for stills; MiniMax, Kling, Pika, Luma for motion. ~$0.003–0.08 per still, ~$0.075–0.4 per motion second.</dd>
+              <dt>Runway <span className="help-tag">KEY</span></dt>
+              <dd>Gen-3 / Gen-4 motion. Best motion quality but hard-aspect-locked to specific resolutions. Calls go through a thin server proxy because Runway blocks browsers.</dd>
+              <dt>ElevenLabs <span className="help-tag">KEY</span></dt>
+              <dd>Voice generation for VO and music score generation.</dd>
+            </dl>
+            <p className="help-note">Keys live in your browser&apos;s localStorage. Nothing is proxied through any AI Cinema server (Runway aside, for CORS reasons). The app itself is completely free.</p>
+          </div>
+
+          <div className="modal-section">
+            <div className="modal-section-title">// TIPS</div>
+            <ul className="help-list">
+              <li><strong>Aspect ratio applies to new generation.</strong> Switching after generating doesn&apos;t reshape existing previews — you&apos;ll need to re-render any clip you want at the new aspect.</li>
+              <li><strong>Reference images flow into stills</strong> if the model supports init-image. SDXL does; the others ignore the reference. The <span className="kbd">→ ref hint</span> below the prompt is clickable to switch to SDXL.</li>
+              <li><strong>Continuity across cuts:</strong> set a section&apos;s INPUT to the previous section&apos;s last frame and use SDXL for visual carry-over.</li>
+              <li><strong>Cost cap</strong> warns at $0.50 per still — useful when you accidentally pick an expensive model.</li>
+              <li><strong>Everything persists</strong> in localStorage. Export your project JSON for portability or to share.</li>
+            </ul>
+          </div>
+
+          <div className="modal-section">
+            <div className="modal-section-title">// KEYBOARD SHORTCUTS</div>
+            <div className="help-shortcuts">
+              {shortcutGroups.map((g) => (
+                <div key={g.title} className="help-shortcut-group">
+                  <div className="help-shortcut-group-title">{g.title}</div>
+                  <div className="shortcut-grid">
+                    {g.items.map((item) => (
+                      <div key={item.label} className="shortcut-row">
+                        <div className="shortcut-keys">
+                          {item.keys.map((k, i) => (
+                            <span key={i} className="kbd">{k}</span>
+                          ))}
+                        </div>
+                        <div className="shortcut-label">{item.label}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
-          ))}
+            <p className="help-note">Shortcuts are ignored while you&apos;re typing in an input or textarea.</p>
+          </div>
         </div>
         <div className="modal-foot">
-          <span className="render-status">Bring your own model · cinematic by default</span>
+          <span className="render-status">Bring your own model · cinematic by default · free to use</span>
           <button type="button" className="btn primary" onClick={onClose}>OK</button>
         </div>
       </div>

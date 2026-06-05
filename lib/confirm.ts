@@ -10,6 +10,8 @@ export type ConfirmPrompt = {
   cancel_label: string;
   destructive: boolean;
   onConfirm: () => void | Promise<void>;
+  alt_label?: string;
+  onAlt?: () => void | Promise<void>;
 };
 
 export type ConfirmState = {
@@ -19,9 +21,12 @@ export type ConfirmState = {
       confirm_label?: string;
       cancel_label?: string;
       destructive?: boolean;
+      alt_label?: string;
+      onAlt?: () => void | Promise<void>;
     },
   ) => void;
   resolve: () => Promise<void>;
+  resolveAlt: () => Promise<void>;
   cancel: () => void;
 };
 
@@ -42,6 +47,8 @@ export const useConfirm = create<ConfirmState>((set, get) => ({
         cancel_label: p.cancel_label ?? "Cancel",
         destructive: p.destructive ?? false,
         onConfirm: p.onConfirm,
+        alt_label: p.alt_label,
+        onAlt: p.onAlt,
       },
     }),
   resolve: async () => {
@@ -49,6 +56,12 @@ export const useConfirm = create<ConfirmState>((set, get) => ({
     if (!current) return;
     set({ prompt: null });
     await current.onConfirm();
+  },
+  resolveAlt: async () => {
+    const current = get().prompt;
+    if (!current || !current.onAlt) return;
+    set({ prompt: null });
+    await current.onAlt();
   },
   cancel: () => set({ prompt: null }),
 }));

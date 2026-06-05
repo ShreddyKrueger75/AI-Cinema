@@ -123,9 +123,25 @@ a { color: inherit; text-decoration: none; }
   border: 1px solid var(--color-blood);
   color: var(--color-blood);
   cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
   transition: background .15s, color .15s;
 }
-.cta-hero:hover { background: var(--color-blood); color: #fff; }
+.cta-hero:hover,
+.cta-hero:focus-visible {
+  background: var(--color-blood);
+  color: #fff;
+  outline: none;
+}
+.cta-hero-sub {
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
 
 .project-settings {
   border: 1px solid var(--color-line);
@@ -2385,6 +2401,78 @@ button.ref-hint:focus-visible::after { opacity: 1; }
   gap: 24px;
 }
 .modal-section { display: flex; flex-direction: column; gap: 10px; }
+.help-body { display: flex; flex-direction: column; gap: 22px; }
+.help-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--color-fg-muted);
+}
+.help-list li strong { color: var(--color-fg); font-weight: 500; }
+.help-list em { color: var(--color-fg); font-style: italic; }
+.help-defs {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(140px, max-content) 1fr;
+  column-gap: 16px;
+  row-gap: 8px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.help-defs dt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-fg);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 1px;
+}
+.help-defs dt .slot-icon,
+.help-defs dt .lib-tab-icon { color: var(--color-blood); }
+.help-defs dd {
+  margin: 0;
+  color: var(--color-fg-muted);
+}
+.help-tag {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.22em;
+  padding: 2px 6px;
+  border: 1px solid var(--color-line);
+  color: var(--color-fg-faint);
+  margin-left: 4px;
+  vertical-align: 1px;
+}
+.help-tag.free {
+  color: var(--color-ok);
+  border-color: var(--color-ok);
+}
+.help-note {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--color-fg-faint);
+  line-height: 1.55;
+  font-style: italic;
+}
+.help-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+.help-shortcut-group { display: flex; flex-direction: column; gap: 6px; }
+.help-shortcut-group-title {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-fg-faint);
+}
 .modal-section-title {
   font-size: 10px;
   letter-spacing: 0.24em;
