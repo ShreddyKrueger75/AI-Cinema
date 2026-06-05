@@ -1362,6 +1362,36 @@ export default function HomePage() {
           <div className="tl-row-actions">
             <button
               type="button"
+              className="tl-row-import-btn"
+              title="Import an image (becomes a still) or a video (becomes a clip) as a new scene"
+              aria-label="Import video or image as new scene"
+              onClick={async () => {
+                const file = await pickFile("image/*,video/*");
+                if (!file) return;
+                const url = URL.createObjectURL(file);
+                addClipSection(null);
+                const sections = useStore.getState().project.sections;
+                const last = sections[sections.length - 1];
+                if (!last) return;
+                if (file.type.startsWith("video/")) {
+                  const ver = last.versions.find((v) => v.id === last.active_version_id);
+                  if (ver && ver.kind === "clip") {
+                    updateClipVersion(last.id, ver.id, { output_url: url });
+                  }
+                  toast.success("Video imported", `${file.name} · new scene`);
+                } else {
+                  const still = last.stills.find((s) => s.id === last.active_still_id);
+                  if (still) {
+                    updateStill(last.id, still.id, { output_url: url });
+                  }
+                  toast.success("Image imported", `${file.name} · new scene`);
+                }
+              }}
+            >
+              ▤ IMPORT
+            </button>
+            <button
+              type="button"
               className="tl-row-add-btn"
               onClick={() => addClipSection(null)}
               title="Add a new scene"
