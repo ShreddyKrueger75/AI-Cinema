@@ -2022,9 +2022,107 @@ export default function HomePage() {
       </div>
       </div>
 
+      <PreviewAudio
+        isPlaying={playPosition !== null}
+        playheadSeconds={playheadSeconds}
+        musicUrl={project.music_track?.output_url ?? null}
+        voSegments={project.vo_segments}
+      />
       <ToastViewport />
       <ConfirmViewport />
     </>
+  );
+}
+
+function PreviewAudio({
+  isPlaying,
+  playheadSeconds,
+  musicUrl,
+  voSegments,
+}: {
+  isPlaying: boolean;
+  playheadSeconds: number;
+  musicUrl: string | null;
+  voSegments: VOSegment[];
+}) {
+  const musicRef = useRef<HTMLAudioElement | null>(null);
+  const voRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
+
+  // Music: start/stop with playback, seek to playhead on start.
+  // Re-seeking on every tick would fight the audio's natural playback.
+  useEffect(() => {
+    const a = musicRef.current;
+    if (!a) return;
+    if (isPlaying) {
+      try { a.currentTime = playheadSeconds; } catch { /* ignore */ }
+      a.play().catch((err: unknown) => {
+        console.warn("[preview] music.play() rejected:", err);
+      });
+    } else {
+      try { a.pause(); } catch { /* ignore */ }
+    }
+    // playheadSeconds intentionally excluded — only re-seek on play/stop or url change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, musicUrl]);
+
+  // VO: gate each segment by whether the playhead is inside its window.
+  useEffect(() => {
+    if (!isPlaying) {
+      voRefs.current.forEach((a) => {
+        try { a.pause(); } catch { /* ignore */ }
+      });
+      return;
+    }
+    for (const seg of voSegments) {
+      const a = voRefs.current.get(seg.id);
+      if (!a || !seg.output_url) continue;
+      const segEnd = seg.start_s + seg.duration_s;
+      const inRange = playheadSeconds >= seg.start_s && playheadSeconds < segEnd;
+      if (inRange) {
+        if (a.paused) {
+          try { a.currentTime = Math.max(0, playheadSeconds - seg.start_s); } catch { /* ignore */ }
+          a.play().catch((err: unknown) => {
+            console.warn("[preview] vo.play() rejected:", err);
+          });
+        }
+      } else if (!a.paused) {
+        try { a.pause(); } catch { /* ignore */ }
+      }
+    }
+  }, [isPlaying, playheadSeconds, voSegments]);
+
+  // Auto-duck music under VO at -6dB (≈ 0.5x).
+  useEffect(() => {
+    const a = musicRef.current;
+    if (!a) return;
+    const ducking = voSegments.some(
+      (seg) =>
+        seg.output_url &&
+        playheadSeconds >= seg.start_s &&
+        playheadSeconds < seg.start_s + seg.duration_s,
+    );
+    a.volume = ducking ? 0.45 : 0.9;
+  }, [playheadSeconds, voSegments]);
+
+  return (
+    <div style={{ display: "none" }} aria-hidden>
+      {musicUrl ? (
+        <audio ref={musicRef} src={musicUrl} preload="auto" />
+      ) : null}
+      {voSegments.map((seg) =>
+        seg.output_url ? (
+          <audio
+            key={seg.id}
+            ref={(el) => {
+              if (el) voRefs.current.set(seg.id, el);
+              else voRefs.current.delete(seg.id);
+            }}
+            src={seg.output_url}
+            preload="auto"
+          />
+        ) : null,
+      )}
+    </div>
   );
 }
 
@@ -2339,7 +2437,32 @@ function PreviewStage({
   isPlaying: boolean;
   onTogglePlay: () => void;
 }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const section = project.sections[currentIndex];
+
+  const activeVersion =
+    section?.versions.find((v) => v.id === section.active_version_id) ?? null;
+  const motionOutput =
+    activeVersion && activeVersion.kind === "clip" ? activeVersion.output_url : undefined;
+  const motionVideoUrl =
+    motionOutput && /^https?:\/\//.test(motionOutput) ? motionOutput : null;
+
+  // Imperative video.play() / pause() — autoPlay doesn't re-trigger when the
+  // attribute changes on an already-mounted element, and an effect run after a
+  // click still counts as a user-gesture continuation for a muted source.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !motionVideoUrl) return;
+    if (isPlaying) {
+      try { v.currentTime = 0; } catch { /* ignore seek errors */ }
+      v.play().catch((err: unknown) => {
+        console.warn("[preview] video.play() rejected:", err);
+      });
+    } else {
+      try { v.pause(); } catch { /* ignore */ }
+    }
+  }, [isPlaying, motionVideoUrl]);
+
   if (!section) {
     return (
       <div className="preview-stage empty">
@@ -2348,16 +2471,12 @@ function PreviewStage({
     );
   }
 
-  const activeVersion = section.versions.find((v) => v.id === section.active_version_id) ?? null;
   const activeStill = section.stills.find((s) => s.id === section.active_still_id) ?? null;
   const referencedStill =
     activeVersion && activeVersion.kind === "clip" && activeVersion.still_ref
       ? section.stills.find((s) => s.id === activeVersion.still_ref) ?? activeStill
       : activeStill;
 
-  const motionOutput = activeVersion && activeVersion.kind === "clip" ? activeVersion.output_url : undefined;
-  const motionVideoUrl =
-    motionOutput && /^https?:\/\//.test(motionOutput) ? motionOutput : null;
   const kbDirection =
     motionOutput && motionOutput.startsWith("kenburns:")
       ? (motionOutput.slice("kenburns:".length) as "in" | "out" | "left" | "right")
@@ -2389,10 +2508,10 @@ function PreviewStage({
             />
           ) : motionVideoUrl ? (
             <video
+              ref={videoRef}
               key={motionVideoUrl}
               src={motionVideoUrl}
               className="stage-video"
-              autoPlay={isPlaying}
               muted
               loop
               playsInline
