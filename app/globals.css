@@ -584,29 +584,32 @@ button {
   align-items: center;
   justify-content: center;
 }
-/* Container sized to viewport — frame centered with padding inside */
+/* Wrapper just flex-centers the canvas — canvas itself controls dimensions */
 .stage-canvas-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  max-width: min(100%, calc(100svh - 360px));
-  aspect-ratio: 16 / 9;
-  background: #0a0908;
-  position: relative;
-  margin: 0 auto;
 }
 .stage-canvas {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  position: relative;
   background: #000;
   border: 1px solid var(--color-line-strong);
   overflow: hidden;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
 }
-/* Each aspect ratio sized to fill the square without overflowing */
-.stage-canvas.aspect-16-9 { width: 100%; height: auto; }
-.stage-canvas.aspect-9-16 { height: 100%; width: auto; }
-.stage-canvas.aspect-1-1  { width: 100%; height: auto; }
+/* Each aspect ratio sized so it fits both the column width AND a viewport max-height */
+.stage-canvas.aspect-16-9 {
+  width: 100%;
+  max-height: calc(100svh - 320px);
+}
+.stage-canvas.aspect-9-16 {
+  height: calc(100svh - 320px);
+  max-width: 100%;
+}
+.stage-canvas.aspect-1-1 {
+  width: min(100%, calc(100svh - 320px));
+}
 
 /* Preview transition animations — kicked off via key change when a clip becomes active */
 @keyframes stage-crossfade {
