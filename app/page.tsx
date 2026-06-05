@@ -309,6 +309,28 @@ function pickFile(accept: string): Promise<File | null> {
   });
 }
 
+function measureAudioDuration(src: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const a = new Audio();
+    a.preload = "metadata";
+    const cleanup = () => {
+      a.removeEventListener("loadedmetadata", onLoaded);
+      a.removeEventListener("error", onError);
+    };
+    const onLoaded = () => {
+      cleanup();
+      resolve(a.duration);
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("Could not read audio metadata"));
+    };
+    a.addEventListener("loadedmetadata", onLoaded);
+    a.addEventListener("error", onError);
+    a.src = src;
+  });
+}
+
 function projectHasGeneratedContent(project: Project): boolean {
   return project.sections.some(
     (s) =>
@@ -642,7 +664,17 @@ export default function HomePage() {
           text: seg.text,
           apiKey: key,
         });
-        updateVOSegment(segmentId, { output_url: dataUrl });
+        // Measure the actual audio duration so the segment's window on the
+        // timeline matches the generated speech — the 3s default can chop a
+        // longer line, and a fully-fit window lets one VO span multiple clips.
+        const measured = await measureAudioDuration(dataUrl).catch(() => null);
+        const projectDuration = useStore.getState().project.duration_s;
+        const patch: Partial<Omit<VOSegment, "id">> = { output_url: dataUrl };
+        if (measured && Number.isFinite(measured) && measured > 0) {
+          const maxFit = Math.max(0.5, projectDuration - seg.start_s);
+          patch.duration_s = Math.min(measured, maxFit);
+        }
+        updateVOSegment(segmentId, patch);
         setVoJobs((j) => {
           const next = { ...j };
           delete next[segmentId];
@@ -3487,7 +3519,12 @@ function VOSegmentEditor({
               const file = await pickFile("audio/*");
               if (!file) return;
               const url = URL.createObjectURL(file);
-              onChange({ output_url: url });
+              const measured = await measureAudioDuration(url).catch(() => null);
+              const patch: Partial<Omit<typeof segment, "id">> = { output_url: url };
+              if (measured && Number.isFinite(measured) && measured > 0) {
+                patch.duration_s = measured;
+              }
+              onChange(patch);
               toast.success("VO imported", file.name);
             }}
           >
