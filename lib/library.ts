@@ -104,6 +104,7 @@ const BUILT_IN_GRADES: LibraryItem<Grade>[] = [
       adjustments: {
         exposure: 0.2,
         contrast: 18,
+        saturation: 5,
         mids: "warm",
         blacks: "crushed",
         shadow_tint: "teal",
@@ -120,6 +121,7 @@ const BUILT_IN_GRADES: LibraryItem<Grade>[] = [
       adjustments: {
         exposure: 0.1,
         contrast: 32,
+        saturation: -35,
         mids: "neutral",
         blacks: "crushed",
         shadow_tint: "neutral",
@@ -136,6 +138,7 @@ const BUILT_IN_GRADES: LibraryItem<Grade>[] = [
       adjustments: {
         exposure: 0,
         contrast: 22,
+        saturation: 12,
         mids: "warm",
         blacks: "neutral",
         shadow_tint: "teal",
@@ -152,6 +155,7 @@ const BUILT_IN_GRADES: LibraryItem<Grade>[] = [
       adjustments: {
         exposure: -0.1,
         contrast: 38,
+        saturation: -65,
         mids: "cool",
         blacks: "crushed",
         shadow_tint: "violet",

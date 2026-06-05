@@ -24,6 +24,7 @@ export const DEFAULT_GRADE: Grade = {
   adjustments: {
     exposure: 0.2,
     contrast: 18,
+    saturation: 5,
     mids: "warm",
     blacks: "crushed",
     shadow_tint: "teal",

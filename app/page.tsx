@@ -63,7 +63,7 @@ import { isRunwayMotionModel, runRunwayMotion } from "@/lib/runway";
 import { extractLastFrameDataUrl, parseLastFrameRef } from "@/lib/video";
 import { runElevenLabsMusic, runElevenLabsTTS, voiceList } from "@/lib/elevenlabs";
 import { describeRenderPlan, renderProject, terminateFFmpeg, type RenderProgress } from "@/lib/render";
-import { buildCubeLUT } from "@/lib/grade";
+import { buildCubeLUT, gradeDescriptor, gradeToCssFilter } from "@/lib/grade";
 
 const ASPECT_OPTIONS: Aspect[] = ["9:16", "16:9", "1:1"];
 
@@ -1817,9 +1817,8 @@ export default function HomePage() {
               onClick={() => setLookOpen("grade")}
             >
               <span>
-                Final pass · <strong>{project.grade?.name ?? "—"}</strong> · exposure +
-                {String(project.grade?.adjustments.exposure ?? 0)} · contrast +
-                {String(project.grade?.adjustments.contrast ?? 0)} · warm mids · crushed blacks · teal shadow
+                Final pass · <strong>{project.grade?.name ?? "—"}</strong>
+                {project.grade ? ` · ${gradeDescriptor(project.grade)}` : ""}
               </span>
             </button>
             <button
@@ -2522,6 +2521,10 @@ function PreviewStage({
     (g) => startSeconds >= g.start_s && startSeconds < g.start_s + g.duration_s,
   );
 
+  // Apply the grade only to the media surface, not the whole canvas, so HUD
+  // chrome (timecode, badges, graphic overlays, play glyph) stays uncolored.
+  const gradeFilter = project.grade ? gradeToCssFilter(project.grade) : undefined;
+
   return (
     <div className="preview-stage">
       <div className="stage-canvas-wrap">
@@ -2547,6 +2550,7 @@ function PreviewStage({
               muted
               loop
               playsInline
+              style={gradeFilter ? { filter: gradeFilter } : undefined}
             />
           ) : stillUrl ? (
             <img
@@ -2554,11 +2558,12 @@ function PreviewStage({
               src={stillUrl}
               alt={section.title}
               className={`stage-img${kbDirection ? ` kb kb-${kbDirection}` : ""}`}
-              style={
-                kbDirection
+              style={{
+                ...(kbDirection
                   ? { animationDuration: `${activeVersion && activeVersion.kind === "clip" ? activeVersion.motion.duration_s : section.duration_s}s` }
-                  : undefined
-              }
+                  : null),
+                ...(gradeFilter ? { filter: gradeFilter } : null),
+              }}
             />
           ) : (
             <div className="stage-empty">

@@ -326,6 +326,7 @@ export const TEMPLATES: Template[] = [
             adjustments: {
               exposure: -0.1,
               contrast: 38,
+              saturation: -65,
               mids: "cool",
               blacks: "crushed",
               shadow_tint: "violet",
