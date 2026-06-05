@@ -59,7 +59,7 @@ a { color: inherit; text-decoration: none; }
 .workspace > .hero          { grid-area: hero; }
 .workspace > .project-head  { grid-area: head; padding: 6px 0 12px; }
 .workspace > .project-settings { grid-area: settings; align-self: start; }
-.workspace > .preview-stage { grid-area: stage; margin-top: 0; padding-top: 0; border-top: none; }
+.workspace > .preview-stage { grid-area: stage; margin-top: 0; }
 .workspace > .stage-controls { grid-area: controls; margin-top: 0; }
 .workspace > .timeline-wrap { grid-area: tl; margin-top: 0; }
 .workspace > .footstrip     { grid-area: foot; margin-top: 0; }
