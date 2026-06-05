@@ -297,6 +297,16 @@ function Waveform({
   );
 }
 
+function pickFile(accept: string): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.onchange = () => resolve(input.files?.[0] ?? null);
+    input.click();
+  });
+}
+
 function templateIcon(id: string): string {
   switch (id) {
     case "tpl_blank": return "◯";
@@ -333,6 +343,8 @@ export default function HomePage() {
   const updateGrade = useStore((s) => s.updateGrade);
   const updateMusic = useStore((s) => s.updateMusic);
   const updateTitleStyle = useStore((s) => s.updateTitleStyle);
+  const updateStill = useStore((s) => s.updateStill);
+  const updateClipVersion = useStore((s) => s.updateClipVersion);
 
   const providerKeys = useProviderKeys((s) => s.keys);
   const setProviderKey = useProviderKeys((s) => s.setKey);
@@ -841,11 +853,18 @@ export default function HomePage() {
         </div>
       </div>
 
-      <div className="wordmark">
-        <span className="painted">AI Cinema</span>
-        <span className="lockup">by Bloody Finger</span>
+      <div className="hero">
+        <span className="hero-brand">Cinema <span className="ai">AI</span></span>
+        <button
+          type="button"
+          className="cta-hero"
+          onClick={() => setTemplatesOpen(true)}
+          title="Pick a template to start fast"
+          aria-label="Open templates to start a new project"
+        >
+          Let&apos;s Go!
+        </button>
       </div>
-      <div className="tagline">Cinematic video, made easy. Bring your own model.</div>
 
       {showWelcome ? (
         <div className="welcome-banner">
@@ -1137,7 +1156,25 @@ export default function HomePage() {
         </div>
       </div>
 
-      <div className="lookbar">
+      <div className="project-settings">
+        <div className="project-settings-title">// PROJECT SETTINGS</div>
+        <div className="stage-meta-aspect" role="radiogroup" aria-label="Aspect ratio">
+          {ASPECT_OPTIONS.map((a) => (
+            <button
+              key={a}
+              type="button"
+              role="radio"
+              aria-checked={project.aspect === a}
+              className={`aspect-pill ${project.aspect === a ? "active" : ""} aspect-${a.replace(":", "-")}`}
+              onClick={() => updateProjectMeta({ aspect: a })}
+              title={`Set whole video to ${a}`}
+            >
+              <span className={`aspect-glyph glyph-${a.replace(":", "-")}`} aria-hidden />
+              <span className="aspect-label">{a}</span>
+            </button>
+          ))}
+        </div>
+        <div className="lookbar">
         <LookSlot
           label="// BRIEF"
           icon="✎"
@@ -1230,6 +1267,7 @@ export default function HomePage() {
             onClose={() => setLookOpen(null)}
           />
         </LookSlot>
+        </div>
       </div>
 
       <PreviewStage
@@ -1382,14 +1420,49 @@ export default function HomePage() {
                     </Popover>
                   </span>
                 ) : null}
-                <div className="clip-num">
-                  <span className={`clip-dot clip-dot-${readyKind}`} title={
-                    readyKind === "ready" ? "Motion rendered" :
-                    readyKind === "still" ? "Still ready, motion pending" :
-                    readyKind === "draft" ? "Draft — nothing generated" :
-                    "Missing"
-                  } />
-                  {section.index.toString().padStart(2, "0")} // {section.type.toUpperCase()}
+                <div className="clip-num-row">
+                  <div className="clip-num">
+                    <span className={`clip-dot clip-dot-${readyKind}`} title={
+                      readyKind === "ready" ? "Motion rendered" :
+                      readyKind === "still" ? "Still ready, motion pending" :
+                      readyKind === "draft" ? "Draft — nothing generated" :
+                      "Missing"
+                    } />
+                    {section.index.toString().padStart(2, "0")} // {section.type.toUpperCase()}
+                  </div>
+                  {section.type === "clip" ? (
+                    <button
+                      type="button"
+                      className="clip-import"
+                      title="Import an image (becomes the still) or a video (becomes the rendered clip)"
+                      aria-label={`Import media into ${section.title}`}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const file = await pickFile("image/*,video/*");
+                        if (!file) return;
+                        const url = URL.createObjectURL(file);
+                        if (file.type.startsWith("video/")) {
+                          const ver = section.versions.find((v) => v.id === section.active_version_id);
+                          if (ver && ver.kind === "clip") {
+                            updateClipVersion(section.id, ver.id, { output_url: url });
+                            toast.success("Video imported", `${file.name} · clip ${section.index}`);
+                          } else {
+                            toast.error("Import failed", "Add a clip version first");
+                          }
+                        } else {
+                          const still = section.stills.find((s) => s.id === section.active_still_id);
+                          if (still) {
+                            updateStill(section.id, still.id, { output_url: url });
+                            toast.success("Image imported", `${file.name} · still ${section.index}`);
+                          } else {
+                            toast.error("Import failed", "Add a still first");
+                          }
+                        }
+                      }}
+                    >
+                      ▤ IMPORT
+                    </button>
+                  ) : null}
                 </div>
                 {(() => {
                   const v = section.versions.find((x) => x.id === section.active_version_id);
@@ -1654,6 +1727,21 @@ export default function HomePage() {
               </span>
               <span>{project.music_track?.output_url ? "♪ ✓" : "♪"} ▾</span>
             </button>
+            <button
+              type="button"
+              className="track-import"
+              title="Import your own music file (mp3, wav, m4a)"
+              aria-label="Import music file"
+              onClick={async () => {
+                const file = await pickFile("audio/*");
+                if (!file) return;
+                const url = URL.createObjectURL(file);
+                updateMusic({ output_url: url, name: file.name.replace(/\.[^.]+$/, "") });
+                toast.success("Music imported", file.name);
+              }}
+            >
+              ▤ IMPORT
+            </button>
             {project.music_track?.output_url ? (
               <>
                 <Waveform
@@ -1696,13 +1784,17 @@ export default function HomePage() {
       </div>
 
       {activeSection ? (
-        <FlowPanel
-          section={activeSection}
-          project={project}
-          providerKeys={providerKeys}
-          onOpenProviders={() => setProvidersOpen(true)}
-          onProviderKeyMissing={() => setProvidersOpen(true)}
-        />
+        <div className="flow-modal-overlay" onClick={() => setActiveSection(null)}>
+          <div className="flow-modal" onClick={(e) => e.stopPropagation()}>
+            <FlowPanel
+              section={activeSection}
+              project={project}
+              providerKeys={providerKeys}
+              onOpenProviders={() => setProvidersOpen(true)}
+              onProviderKeyMissing={() => setProvidersOpen(true)}
+            />
+          </div>
+        </div>
       ) : null}
 
       {renderOpen ? (
@@ -2358,22 +2450,6 @@ function PreviewStage({
       </div>
 
       <div className="stage-meta">
-        <div className="stage-meta-aspect" role="radiogroup" aria-label="Aspect ratio">
-          {ASPECT_OPTIONS.map((a) => (
-            <button
-              key={a}
-              type="button"
-              role="radio"
-              aria-checked={project.aspect === a}
-              className={`aspect-pill ${project.aspect === a ? "active" : ""} aspect-${a.replace(":", "-")}`}
-              onClick={() => updateProjectMeta({ aspect: a })}
-              title={`Set whole video to ${a}`}
-            >
-              <span className={`aspect-glyph glyph-${a.replace(":", "-")}`} aria-hidden />
-              <span className="aspect-label">{a}</span>
-            </button>
-          ))}
-        </div>
         <div className="stage-meta-info">
           <span>{section.index.toString().padStart(2, "0")} / {project.sections.length}</span>
           <span className="stage-divider">·</span>
@@ -3201,7 +3277,7 @@ function VOSegmentEditor({
   projectDuration: number;
   job?: { status: "running" | "error"; error?: string };
   hasKey: boolean;
-  onChange: (patch: Partial<{ text: string; voice: string; start_s: number; duration_s: number }>) => void;
+  onChange: (patch: Partial<{ text: string; voice: string; start_s: number; duration_s: number; output_url: string }>) => void;
   onGenerate: () => void;
   onDismissError: () => void;
   onRemove: () => void;
@@ -3210,7 +3286,23 @@ function VOSegmentEditor({
     <div className="editor compact">
       <div className="editor-head">
         <span>// VO</span>
-        <button type="button" className="btn ghost" onClick={onRemove}>✕ Remove</button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            type="button"
+            className="btn ghost"
+            title="Import an audio file instead of generating"
+            onClick={async () => {
+              const file = await pickFile("audio/*");
+              if (!file) return;
+              const url = URL.createObjectURL(file);
+              onChange({ output_url: url });
+              toast.success("VO imported", file.name);
+            }}
+          >
+            ▤ Import
+          </button>
+          <button type="button" className="btn ghost" onClick={onRemove}>✕ Remove</button>
+        </div>
       </div>
       <Field label="Text">
         <textarea
