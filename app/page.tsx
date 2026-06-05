@@ -309,6 +309,18 @@ function pickFile(accept: string): Promise<File | null> {
   });
 }
 
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("FileReader returned non-string"));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("FileReader error"));
+    reader.readAsDataURL(blob);
+  });
+}
+
 function measureAudioDuration(src: string): Promise<number> {
   return new Promise((resolve, reject) => {
     const a = new Audio();
@@ -3735,8 +3747,11 @@ function FlowPanel({
           throw new Error(`Pollinations ${r.status}: ${detail}`);
         }
         const blob = await r.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        updateStill(section.id, activeStill.id, { output_url: blobUrl });
+        // Persist as a data URL — blob: URLs die on page refresh, breaking
+        // every still on the next load. Pollinations stills are ~150KB so
+        // 6 of them fit comfortably in localStorage.
+        const dataUrl = await blobToDataUrl(blob);
+        updateStill(section.id, activeStill.id, { output_url: dataUrl });
         clearJob(jobKey);
         return;
       } catch (err) {
@@ -3751,7 +3766,8 @@ function FlowPanel({
               aspect: project.aspect,
               apiToken: replicateToken,
             });
-            updateStill(section.id, activeStill.id, { output_url: fallbackUrl });
+            const fbDataUrl = await fetchAsDataUrl(fallbackUrl).catch(() => fallbackUrl);
+            updateStill(section.id, activeStill.id, { output_url: fbDataUrl });
             clearJob(jobKey);
             toast.success("Fallback succeeded", "Generated on Flux Schnell · switch the still's model to make it stick");
             return;
@@ -3817,7 +3833,10 @@ function FlowPanel({
           apiToken: token,
           referenceImageUrl,
         });
-        updateStill(section.id, activeStill.id, { output_url: url });
+        // Persist as a data URL — Replicate's signed delivery URLs expire
+        // after ~24h, so storing the URL alone breaks every still tomorrow.
+        const dataUrl = await fetchAsDataUrl(url).catch(() => url);
+        updateStill(section.id, activeStill.id, { output_url: dataUrl });
         clearJob(jobKey);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
