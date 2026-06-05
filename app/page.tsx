@@ -322,6 +322,34 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+// Browsers vary on which audio formats they decode. AIFF / Apple Lossless /
+// some legacy codecs work in Safari but not Chrome/Firefox. Quick check up
+// front so the user gets a clear "not supported" warning instead of a silent
+// audio element that won't play.
+function canBrowserPlayAudio(file: File): { ok: boolean; reason?: string } {
+  const a = document.createElement("audio");
+  const mime = file.type || "";
+  const ext = file.name.toLowerCase().split(".").pop() ?? "";
+  if (mime && a.canPlayType(mime) !== "") return { ok: true };
+  const fallback: Record<string, string> = {
+    mp3: "audio/mpeg",
+    wav: "audio/wav",
+    m4a: "audio/mp4",
+    aac: "audio/aac",
+    ogg: "audio/ogg",
+    oga: "audio/ogg",
+    opus: "audio/ogg; codecs=opus",
+    flac: "audio/flac",
+    webm: "audio/webm",
+  };
+  const guess = fallback[ext];
+  if (guess && a.canPlayType(guess) !== "") return { ok: true };
+  return {
+    ok: false,
+    reason: `Your browser can't play .${ext || mime || "this format"}. Try .mp3, .wav, .m4a, or .ogg.`,
+  };
+}
+
 function measureAudioDuration(src: string): Promise<number> {
   return new Promise((resolve, reject) => {
     const a = new Audio();
@@ -1739,6 +1767,11 @@ export default function HomePage() {
               onClick={async () => {
                 const file = await pickFile("audio/*");
                 if (!file) return;
+                const check = canBrowserPlayAudio(file);
+                if (!check.ok) {
+                  toast.error("Unsupported audio format", check.reason);
+                  return;
+                }
                 const url = URL.createObjectURL(file);
                 const measured = await measureAudioDuration(url).catch(() => null);
                 addVOSegment();
@@ -1784,6 +1817,11 @@ export default function HomePage() {
               onClick={async () => {
                 const file = await pickFile("audio/*");
                 if (!file) return;
+                const check = canBrowserPlayAudio(file);
+                if (!check.ok) {
+                  toast.error("Unsupported audio format", check.reason);
+                  return;
+                }
                 const url = URL.createObjectURL(file);
                 const measured = await measureAudioDuration(url).catch(() => null);
                 addMusicSegment();
@@ -3738,6 +3776,11 @@ function VOSegmentEditor({
             onClick={async () => {
               const file = await pickFile("audio/*");
               if (!file) return;
+              const check = canBrowserPlayAudio(file);
+              if (!check.ok) {
+                toast.error("Unsupported audio format", check.reason);
+                return;
+              }
               const url = URL.createObjectURL(file);
               const measured = await measureAudioDuration(url).catch(() => null);
               const patch: Partial<Omit<typeof segment, "id">> = { output_url: url };
