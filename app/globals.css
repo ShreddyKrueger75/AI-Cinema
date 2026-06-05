@@ -608,6 +608,22 @@ button {
 .stage-canvas.aspect-9-16 { height: 100%; width: auto; }
 .stage-canvas.aspect-1-1  { width: 100%; height: auto; }
 
+/* Preview transition animations — kicked off via key change when a clip becomes active */
+@keyframes stage-crossfade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes stage-fade-black {
+  0%   { opacity: 0; filter: brightness(0); }
+  100% { opacity: 1; filter: brightness(1); }
+}
+.stage-canvas.enter-crossfade {
+  animation: stage-crossfade var(--transition-duration, 0.4s) ease-in-out;
+}
+.stage-canvas.enter-fade_black {
+  animation: stage-fade-black var(--transition-duration, 0.4s) ease-in-out;
+}
+
 .stage-video,
 .stage-img {
   position: absolute;
@@ -1164,10 +1180,15 @@ button {
 }
 .clip-num-row {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   margin-bottom: 8px;
   gap: 6px;
+  min-height: 24px;
+}
+.clip .clip-num {
+  margin-top: 4px;
+  margin-bottom: 2px;
 }
 .clip-import,
 .track-import {

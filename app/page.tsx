@@ -1470,15 +1470,6 @@ export default function HomePage() {
                   </span>
                 ) : null}
                 <div className="clip-num-row">
-                  <div className="clip-num">
-                    <span className={`clip-dot clip-dot-${readyKind}`} title={
-                      readyKind === "ready" ? "Motion rendered" :
-                      readyKind === "still" ? "Still ready, motion pending" :
-                      readyKind === "draft" ? "Draft — nothing generated" :
-                      "Missing"
-                    } />
-                    {section.index.toString().padStart(2, "0")} // {cellKind}
-                  </div>
                   {section.type === "clip" ? (
                     <button
                       type="button"
@@ -1540,6 +1531,15 @@ export default function HomePage() {
                     </div>
                   );
                 })()}
+                <div className="clip-num">
+                  <span className={`clip-dot clip-dot-${readyKind}`} title={
+                    readyKind === "ready" ? "Motion rendered" :
+                    readyKind === "still" ? "Still ready, motion pending" :
+                    readyKind === "draft" ? "Draft — nothing generated" :
+                    "Missing"
+                  } />
+                  {section.index.toString().padStart(2, "0")} // {cellKind}
+                </div>
                 <div className="clip-title">
                   {section.title}
                   {section.notes && section.notes.trim().length > 0 ? (
@@ -2658,12 +2658,21 @@ function PreviewStage({
   // chrome (timecode, badges, graphic overlays, play glyph) stays uncolored.
   const gradeFilter = project.grade ? gradeToCssFilter(project.grade) : undefined;
 
+  // Incoming transition for the current section — animates when we enter
+  // this clip during playback (crossfade fades in, fade_black flashes black).
+  const incomingTransition = project.transitions.find((t) => t.to_section_id === section.id);
+  const transitionClass = isPlaying && incomingTransition && incomingTransition.type !== "cut"
+    ? `enter-${incomingTransition.type}`
+    : "";
+  const transitionDuration = incomingTransition ? incomingTransition.duration_s : 0;
+
   return (
     <div className="preview-stage">
       <div className="stage-canvas-wrap">
         <div
-          className={`stage-canvas aspect-${project.aspect.replace(":", "-")} ${isPlaying ? "playing" : "paused"}`}
-          style={{ aspectRatio }}
+          key={`${section.id}-${isPlaying ? "play" : "pause"}`}
+          className={`stage-canvas aspect-${project.aspect.replace(":", "-")} ${isPlaying ? "playing" : "paused"} ${transitionClass}`}
+          style={{ aspectRatio, ['--transition-duration' as string]: `${transitionDuration}s` }}
         >
           {section.type === "title" ? (
             <TitleCardLive
