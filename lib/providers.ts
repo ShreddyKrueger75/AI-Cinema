@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
 export type ProviderId =
+  | "pollinations"
   | "replicate"
   | "runway"
   | "elevenlabs"
@@ -20,9 +21,18 @@ export type Provider = {
   docs_url?: string;
   notes?: string;
   experimental?: boolean;
+  optional?: boolean;
 };
 
 export const PROVIDERS: Provider[] = [
+  {
+    id: "pollinations",
+    name: "Pollinations",
+    surfaces: ["image"],
+    signup_url: "https://enter.pollinations.ai",
+    notes: "Optional — bypass the free-tier IP queue (1 request/IP) for unlimited stills.",
+    optional: true,
+  },
   {
     id: "replicate",
     name: "Replicate",
@@ -73,6 +83,7 @@ export const PROVIDERS: Provider[] = [
 ];
 
 const MODEL_TO_PROVIDER: Record<string, ProviderId> = {
+  "pollinations": "pollinations",
   "flux-1.1-pro": "replicate",
   "flux-schnell": "replicate",
   "sdxl": "replicate",

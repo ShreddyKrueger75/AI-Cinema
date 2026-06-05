@@ -726,8 +726,14 @@ export default function HomePage() {
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName?.toLowerCase();
+      // Treat <input>, <textarea>, <select>, and any contenteditable as
+      // "typing surface" — global single-key shortcuts must not fire there.
       const editable =
-        tag === "input" || tag === "textarea" || target?.isContentEditable;
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select" ||
+        !!target?.isContentEditable ||
+        !!target?.closest?.("input, textarea, select, [contenteditable=''], [contenteditable='true']");
       const mod = e.metaKey || e.ctrlKey;
 
       if (mod && (e.key === "z" || e.key === "Z")) {
@@ -904,6 +910,21 @@ export default function HomePage() {
 
   return (
     <>
+      <div className="mobile-gate" role="dialog" aria-label="Best on desktop">
+        <div className="mobile-gate-card">
+          <div className="mobile-gate-brand"><span className="ai">AI</span> Cinema</div>
+          <div className="mobile-gate-title">// BEST ON DESKTOP</div>
+          <p>
+            AI Cinema is a timeline-driven editor with drag-and-drop, keyboard shortcuts, and an
+            ffmpeg renderer running in your browser. It needs a wide screen.
+          </p>
+          <p>
+            Open <strong>ai-cinema-red.vercel.app</strong> on a laptop or desktop with at least a
+            900px-wide window.
+          </p>
+        </div>
+      </div>
+
       <div className="workspace">
       <div className="statusbar">
         <div className="left">
@@ -946,7 +967,7 @@ export default function HomePage() {
       </div>
 
       <div className="hero">
-        <span className="hero-brand">Cinema <span className="ai">AI</span></span>
+        <span className="hero-brand"><span className="ai">AI</span> Cinema</span>
         <a
           className="cta-hero"
           href="/signup"
@@ -1330,9 +1351,7 @@ export default function HomePage() {
           style={{ gridTemplateColumns: tlGridCols }}
         >
           {project.sections.map((section) => {
-            if (section.type === "title") {
-              return <div key={section.id} className="clip-slot empty" />;
-            }
+            const isTitle = section.type === "title";
             const isActive = section.id === activeSectionId;
             const isPreviewing = section.id === previewSectionId;
             const versionIdx = section.versions.findIndex((v) => v.id === section.active_version_id);
@@ -1340,17 +1359,21 @@ export default function HomePage() {
             const versionLabel = empty ? "— not yet" : `v${versionIdx + 1} ▾`;
             const trans = transitionsByTo.get(section.id);
             const activeVer = section.versions.find((v) => v.id === section.active_version_id);
-            const readyKind: "ready" | "still" | "draft" | "missing" = (() => {
+            const titleText =
+              isTitle && activeVer && activeVer.kind === "title" ? activeVer.text : "";
+            const readyKind: "ready" | "still" | "draft" | "missing" | "title" = (() => {
+              if (isTitle) return "title";
               if (activeVer && activeVer.kind === "clip" && activeVer.output_url) return "ready";
               const stillId = activeVer && activeVer.kind === "clip" ? activeVer.still_ref ?? section.active_still_id : section.active_still_id;
               const still = stillId ? section.stills.find((s) => s.id === stillId) : null;
               if (still?.output_url) return "still";
               return empty ? "missing" : "draft";
             })();
+            const cellKind: "CLIP" | "TITLE" = isTitle ? "TITLE" : "CLIP";
             return (
               <div
                 key={section.id}
-                className={`clip${isActive ? " active" : ""}${empty ? " empty" : ""}${isPreviewing ? " previewing" : ""}${
+                className={`clip${isTitle ? " title-clip" : ""}${isActive ? " active" : ""}${empty && !isTitle ? " empty" : ""}${isPreviewing ? " previewing" : ""}${
                   dragSectionId === section.id ? " dragging" : ""
                 }${dropTarget?.id === section.id ? ` drop-${dropTarget.side}` : ""}`}
                 draggable
@@ -1432,7 +1455,7 @@ export default function HomePage() {
                       readyKind === "draft" ? "Draft — nothing generated" :
                       "Missing"
                     } />
-                    {section.index.toString().padStart(2, "0")} // CLIP
+                    {section.index.toString().padStart(2, "0")} // {cellKind}
                   </div>
                   {section.type === "clip" ? (
                     <button
@@ -1469,6 +1492,13 @@ export default function HomePage() {
                   ) : null}
                 </div>
                 {(() => {
+                  if (isTitle) {
+                    return (
+                      <div className={`clip-thumb title-thumb ${aspectClass}`}>
+                        <span className="title-thumb-text">{titleText || "—"}</span>
+                      </div>
+                    );
+                  }
                   const v = section.versions.find((x) => x.id === section.active_version_id);
                   const stillRef = v && v.kind === "clip" ? v.still_ref ?? section.active_still_id : section.active_still_id;
                   const still = stillRef ? section.stills.find((s) => s.id === stillRef) : null;
@@ -1984,7 +2014,7 @@ export default function HomePage() {
         <span className="footstrip-mid">
           {project.sections.length} SECTIONS · {project.vo_segments.length} VO · {projectStubs.length} SAVED · SPENT {formatCost(sessionSpent)}
         </span>
-        <span>BLOODY FINGER SOFTWARE — 2026</span>
+        <span>BLOODY FINGERS SOFTWARE — 2026</span>
       </div>
       </div>
 
@@ -3515,6 +3545,7 @@ function FlowPanel({
         project.aspect,
         newSeed(),
         project.brief?.visual,
+        providerKeys.pollinations,
       );
       const jobKey = stillJobKey(section.id, activeStill.id);
       setJob(jobKey, { status: "running", startedAt: Date.now() });
@@ -3570,7 +3601,7 @@ function FlowPanel({
         toast.error(
           throttled ? "Free preview throttled" : "Generation failed",
           throttled
-            ? `${message} Wait ~30s, sign up at https://enter.pollinations.ai, or add a Replicate key for automatic Flux Schnell fallback.`
+            ? `${message} Wait ~30s, add a Pollinations token (🔑 Keys → Pollinations) from enter.pollinations.ai, or add a Replicate key for automatic Flux Schnell fallback.`
             : message,
         );
       }
@@ -3658,6 +3689,7 @@ function FlowPanel({
           project.aspect,
           newSeed(),
           project.brief?.visual,
+          providerKeys.pollinations,
         );
         updateStill(section.id, stillToUse.id, { output_url: url });
       }
@@ -4137,11 +4169,30 @@ function ClipFlowBody({
             className="field-input tall"
             rows={3}
             value={activeStill?.image_prompt ?? ""}
-            disabled={!activeStill}
-            placeholder={activeStill ? "" : "+ new still to start"}
-            onChange={(e) =>
-              activeStill && onUpdateStill(activeStill.id, { image_prompt: e.target.value })
-            }
+            placeholder={activeStill ? "" : "start typing — a still will be created"}
+            onFocus={() => {
+              if (!activeStill) onAddStill();
+            }}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (activeStill) {
+                onUpdateStill(activeStill.id, { image_prompt: value });
+                return;
+              }
+              useStore.getState().addStill(section.id);
+              const after = useStore
+                .getState()
+                .project.sections.find((s) => s.id === section.id);
+              const newStill =
+                after?.active_still_id
+                  ? after.stills.find((s) => s.id === after.active_still_id)
+                  : null;
+              if (newStill) {
+                useStore
+                  .getState()
+                  .updateStill(section.id, newStill.id, { image_prompt: value });
+              }
+            }}
           />
         </Field>
 
@@ -4159,7 +4210,7 @@ function ClipFlowBody({
           <Field label="Model">
             <div className="field-pill">
               <select
-                value={activeStill?.model ?? "flux-1.1-pro"}
+                value={activeStill?.model ?? "pollinations"}
                 disabled={!activeStill}
                 onChange={(e) =>
                   activeStill && onUpdateStill(activeStill.id, { model: e.target.value })
@@ -5084,7 +5135,7 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
             <div className="modal-section-title">// PROVIDERS</div>
             <dl className="help-defs">
               <dt>Pollinations <span className="help-tag free">FREE</span></dt>
-              <dd>Free Flux stills. Often queued (1 request per IP) — falls back to Flux Schnell automatically if a Replicate key is configured.</dd>
+              <dd>Free Flux stills. Often queued (1 request per IP) — sign up at enter.pollinations.ai and paste the token via 🔑 Keys to skip the queue. Or add a Replicate key to auto-fall back to Flux Schnell.</dd>
               <dt>Replicate <span className="help-tag">KEY</span></dt>
               <dd>Flux 1.1 Pro, Flux Schnell, SDXL, Ideogram for stills; MiniMax, Kling, Pika, Luma for motion. ~$0.003–0.08 per still, ~$0.075–0.4 per motion second.</dd>
               <dt>Runway <span className="help-tag">KEY</span></dt>
@@ -5232,7 +5283,9 @@ function ProvidersDialog({
 
         <div className="modal-foot">
           <span className="render-status">
-            {Object.values(keys).filter((v) => v && v.trim()).length} of {PROVIDERS.length} configured
+            {
+              PROVIDERS.filter((p) => !p.experimental && keys[p.id] && keys[p.id]!.trim()).length
+            } of {PROVIDERS.filter((p) => !p.experimental).length} configured
           </span>
           <button type="button" className="btn ghost" onClick={onClose}>Done</button>
         </div>
