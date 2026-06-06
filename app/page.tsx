@@ -647,6 +647,7 @@ export default function HomePage() {
   const [editingGraphicId, setEditingGraphicId] = useState<string | null>(null);
   const [editingVOId, setEditingVOId] = useState<string | null>(null);
   const [editingMusicId, setEditingMusicId] = useState<string | null>(null);
+  const [sectionEditorOpen, setSectionEditorOpen] = useState(false);
   const [musicPanelOpen, setMusicPanelOpen] = useState(false);
   const [lookOpen, setLookOpen] = useState<null | "brief" | "grade" | "title">(null);
   const [libTab, setLibTab] = useState<"projects" | "templates">("projects");
@@ -990,6 +991,11 @@ export default function HomePage() {
         if (editingMusicId) { setEditingMusicId(null); return; }
         if (editingGraphicId) { setEditingGraphicId(null); return; }
         if (lookOpen) { setLookOpen(null); return; }
+        if (sectionEditorOpen) {
+          if (editable) (e.target as HTMLElement)?.blur?.();
+          setSectionEditorOpen(false);
+          return;
+        }
         if (activeSectionId) {
           if (editable) (e.target as HTMLElement)?.blur?.();
           setActiveSection(null);
@@ -1059,6 +1065,9 @@ export default function HomePage() {
     providersOpen,
     musicPanelOpen,
     editingVOId,
+    editingMusicId,
+    editingGraphicId,
+    sectionEditorOpen,
     lookOpen,
     activeSectionId,
     project.sections,
@@ -1664,7 +1673,7 @@ export default function HomePage() {
                   setDragSectionId(null);
                   setDropTarget(null);
                 }}
-                onClick={() => setActiveSection(section.id)}
+                onClick={() => { setActiveSection(section.id); setSectionEditorOpen(true); }}
                 style={
                   isPreviewing ? { animationDuration: `${section.duration_s}s` } : undefined
                 }
@@ -1879,7 +1888,17 @@ export default function HomePage() {
                     aria-label="Remove section"
                     onClick={(e) => {
                       e.stopPropagation();
-                      removeSection(section.id);
+                      confirmAsk({
+                        title: `Delete "${section.title}"?`,
+                        message: `Removes section ${section.index.toString().padStart(2, "0")} from the timeline. Generated content for this section will be lost.`,
+                        confirm_label: "Delete",
+                        cancel_label: "Keep",
+                        destructive: true,
+                        onConfirm: () => {
+                          removeSection(section.id);
+                          toast.info(`Removed "${section.title}"`);
+                        },
+                      });
                     }}
                   >
                     ✕
@@ -2009,13 +2028,13 @@ export default function HomePage() {
         </div>
       </div>
 
-      {activeSection ? (
-        <div className="flow-modal-overlay" onClick={() => setActiveSection(null)}>
+      {activeSection && sectionEditorOpen ? (
+        <div className="flow-modal-overlay" onClick={() => setSectionEditorOpen(false)}>
           <div className="flow-modal" onClick={(e) => e.stopPropagation()}>
             {sectionHasImportedContent(activeSection) ? (
               <ImportedClipPanel
                 section={activeSection}
-                onClose={() => setActiveSection(null)}
+                onClose={() => setSectionEditorOpen(false)}
               />
             ) : (
               <FlowPanel
@@ -2024,6 +2043,7 @@ export default function HomePage() {
                 providerKeys={providerKeys}
                 onOpenProviders={() => setProvidersOpen(true)}
                 onProviderKeyMissing={() => setProvidersOpen(true)}
+                onClose={() => setSectionEditorOpen(false)}
               />
             )}
           </div>
@@ -4322,12 +4342,14 @@ function FlowPanel({
   providerKeys,
   onOpenProviders,
   onProviderKeyMissing,
+  onClose,
 }: {
   section: Section;
   project: Project;
   providerKeys: Partial<Record<ProviderId, string>>;
   onOpenProviders: () => void;
   onProviderKeyMissing: () => void;
+  onClose: () => void;
 }) {
   const setActiveSection = useStore((s) => s.setActiveSection);
   const setActiveVersion = useStore((s) => s.setActiveVersion);
@@ -4788,7 +4810,7 @@ function FlowPanel({
               </Popover>
             </span>
           ) : null}
-          <button type="button" className="btn ghost" onClick={() => setActiveSection(null)}>
+          <button type="button" className="btn ghost" onClick={onClose}>
             ✕ Close
           </button>
         </div>
