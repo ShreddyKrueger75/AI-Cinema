@@ -2,6 +2,23 @@
 
 import type { Aspect, GraphicOverlay, Project, Section, Transition } from "./types";
 import { buildCubeLUT, buildFFmpegGradeFilter } from "./grade";
+import { isAssetUri, getAsset } from "./asset-store";
+
+// Wraps `fetchFile` so the render pipeline can transparently consume any
+// URL the editor stores — http(s), data:, blob:, or `assetdb:<uuid>` from
+// the IndexedDB asset store. ffmpeg.wasm's `fetchFile` would otherwise
+// reject the assetdb scheme entirely.
+async function fetchAnyAsset(
+  fetchFile: (file: string | Blob) => Promise<Uint8Array>,
+  url: string,
+): Promise<Uint8Array> {
+  if (isAssetUri(url)) {
+    const blob = await getAsset(url);
+    if (!blob) throw new Error(`Asset not found in IndexedDB: ${url}`);
+    return fetchFile(blob);
+  }
+  return fetchFile(url);
+}
 
 export type RenderProgress = {
   phase: "loading-engine" | "fetching-assets" | "encoding" | "writing" | "done" | "error";
@@ -46,7 +63,7 @@ function planAssets(project: Project): Asset[] {
       continue;
     }
     const u = active.output_url;
-    if (u && /^https?:\/\//.test(u)) {
+    if (u && /^(https?:|blob:|data:|assetdb:)/.test(u)) {
       out.push({ sectionId: s.id, kind: "video", url: u, duration_s: s.duration_s });
       continue;
     }
@@ -291,7 +308,7 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
     });
 
     if (a.kind === "video" && a.url) {
-      const data = await fetchFile(a.url);
+      const data = await fetchAnyAsset(fetchFile, a.url);
       const inName = `in_${i}.mp4`;
       await ffmpeg.writeFile(inName, data);
       const outName = nameFor(section, "ts");
@@ -312,7 +329,7 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
     }
 
     if (a.kind === "still" && a.url) {
-      const data = await fetchFile(a.url);
+      const data = await fetchAnyAsset(fetchFile, a.url);
       const inName = `still_${i}.jpg`;
       await ffmpeg.writeFile(inName, data);
       const outName = nameFor(section, "ts");
@@ -455,7 +472,7 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
     const musicVolume = voWithAudio.length > 0 ? "0.35" : "0.7";
 
     if (hasMusic) {
-      const musicData = await fetchFile(project.music_track!.output_url!);
+      const musicData = await fetchAnyAsset(fetchFile, project.music_track!.output_url!);
       const musicName = "music.mp3";
       await ffmpeg.writeFile(musicName, musicData);
       audioFiles.push(musicName);
@@ -473,7 +490,7 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
     for (let i = 0; i < musicSegsWithAudio.length; i++) {
       const seg = musicSegsWithAudio[i];
       const name = `mseg_${i}.mp3`;
-      const data = await fetchFile(seg.output_url!);
+      const data = await fetchAnyAsset(fetchFile, seg.output_url!);
       await ffmpeg.writeFile(name, data);
       audioFiles.push(name);
       inputs.push("-i", name);
@@ -501,7 +518,7 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
 
     for (let i = 0; i < voWithAudio.length; i++) {
       const seg = voWithAudio[i];
-      const data = await fetchFile(seg.output_url!);
+      const data = await fetchAnyAsset(fetchFile, seg.output_url!);
       await ffmpeg.writeFile(`vo_${i}.mp3`, data);
     }
 
@@ -546,7 +563,7 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
     const name = `graphic_${i}.png`;
     if (g.image_url) {
       try {
-        const data = await fetchFile(g.image_url);
+        const data = await fetchAnyAsset(fetchFile, g.image_url);
         await ffmpeg.writeFile(name, data);
       } catch {
         continue;

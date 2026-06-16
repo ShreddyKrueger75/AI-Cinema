@@ -65,6 +65,8 @@ import { extractLastFrameDataUrl, parseLastFrameRef } from "@/lib/video";
 import { runElevenLabsMusic, runElevenLabsTTS, voiceList } from "@/lib/elevenlabs";
 import { describeRenderPlan, renderProject, terminateFFmpeg, type RenderProgress } from "@/lib/render";
 import { buildCubeLUT, gradeDescriptor, gradeToCssFilter } from "@/lib/grade";
+import { putAsset, fetchToAsset, isAssetUri } from "@/lib/asset-store";
+import { useAssetUrl } from "@/lib/use-asset-url";
 
 const ASPECT_OPTIONS: Aspect[] = ["9:16", "16:9", "1:1"];
 
@@ -240,6 +242,26 @@ function InlineText({
       {isEmpty ? emptyLabel ?? placeholder ?? "—" : value}
     </span>
   );
+}
+
+// Small wrappers that resolve `assetdb:` URIs (IndexedDB-backed persisted
+// blobs) to fresh `blob:` URLs before passing to native elements. For sites
+// that need a ref (PreviewStage video, PreviewAudio music), the hook is
+// called directly inline instead.
+function AssetImg({ src, ...rest }: React.ImgHTMLAttributes<HTMLImageElement> & { src: string | null | undefined }) {
+  const resolved = useAssetUrl(src);
+  if (!resolved) return null;
+  return <img src={resolved} {...rest} />;
+}
+function AssetVideo({ src, ...rest }: React.VideoHTMLAttributes<HTMLVideoElement> & { src: string | null | undefined }) {
+  const resolved = useAssetUrl(src);
+  if (!resolved) return null;
+  return <video src={resolved} {...rest} />;
+}
+function AssetAudio({ src, ...rest }: React.AudioHTMLAttributes<HTMLAudioElement> & { src: string | null | undefined }) {
+  const resolved = useAssetUrl(src);
+  if (!resolved) return null;
+  return <audio src={resolved} {...rest} />;
 }
 
 function Waveform({
@@ -1460,9 +1482,9 @@ export default function HomePage() {
                 const last = (useStore.getState().project.graphics ?? []).slice(-1)[0];
                 if (last) {
                   if (isImage) {
-                    const url = URL.createObjectURL(file);
+                    const persistedUrl = await blobToDataUrl(file);
                     updateGraphic(last.id, {
-                      image_url: url,
+                      image_url: persistedUrl,
                       text: file.name.replace(/\.[^.]+$/, ""),
                       label: file.name,
                     });
@@ -1547,10 +1569,12 @@ export default function HomePage() {
                     return;
                   }
                 }
-                const url = URL.createObjectURL(file);
+                // Persist large blobs in IndexedDB so they survive refresh;
+                // small images can ride as data URLs in localStorage.
+                const persistedUrl = isVideo ? await putAsset(file) : await blobToDataUrl(file);
                 const poster = isVideo ? await extractVideoPosterDataUrl(file) : null;
                 const videoDuration = isVideo
-                  ? await measureAudioDuration(url).catch(() => null)
+                  ? await measureAudioDuration(persistedUrl).catch(() => null)
                   : null;
                 addClipSection(null);
                 useStore.getState().setActiveSection(null);
@@ -1561,7 +1585,7 @@ export default function HomePage() {
                 if (isVideo) {
                   const ver = last.versions.find((v) => v.id === last.active_version_id);
                   if (ver && ver.kind === "clip") {
-                    updateClipVersion(last.id, ver.id, { output_url: url });
+                    updateClipVersion(last.id, ver.id, { output_url: persistedUrl });
                   }
                   if (poster) {
                     const still = last.stills.find((s) => s.id === last.active_still_id);
@@ -1577,7 +1601,7 @@ export default function HomePage() {
                     const lastMusic = (useStore.getState().project.music_segments ?? []).slice(-1)[0];
                     if (lastMusic) {
                       updateMusicSegment(lastMusic.id, {
-                        output_url: url,
+                        output_url: persistedUrl,
                         name: file.name.replace(/\.[^.]+$/, "") + " (audio)",
                         start_s: startS,
                         duration_s: videoDuration,
@@ -1588,7 +1612,7 @@ export default function HomePage() {
                 } else {
                   const still = last.stills.find((s) => s.id === last.active_still_id);
                   if (still) {
-                    updateStill(last.id, still.id, { output_url: url });
+                    updateStill(last.id, still.id, { output_url: persistedUrl });
                   }
                   toast.success("Image imported", `${file.name} · new scene`);
                 }
@@ -1726,7 +1750,7 @@ export default function HomePage() {
                   if (thumb) {
                     return (
                       <div className={`clip-thumb ${aspectClass}`}>
-                        <img src={thumb} alt={section.title} />
+                        <AssetImg src={thumb} alt={section.title} />
                         {isVideo ? <span className="clip-thumb-badge">▶</span> : null}
                       </div>
                     );
@@ -1925,13 +1949,13 @@ export default function HomePage() {
                   toast.error("Unsupported audio format", check.reason);
                   return;
                 }
-                const url = URL.createObjectURL(file);
-                const measured = await measureAudioDuration(url).catch(() => null);
+                const persistedUrl = await putAsset(file);
+                const measured = await measureAudioDuration(persistedUrl).catch(() => null);
                 addVOSegment();
                 setEditingVOId(null);
                 const last = useStore.getState().project.vo_segments.slice(-1)[0];
                 if (last) {
-                  const patch: Partial<Omit<VOSegment, "id">> = { output_url: url, text: file.name.replace(/\.[^.]+$/, "") };
+                  const patch: Partial<Omit<VOSegment, "id">> = { output_url: persistedUrl, text: file.name.replace(/\.[^.]+$/, "") };
                   if (measured && Number.isFinite(measured) && measured > 0) patch.duration_s = measured;
                   updateVOSegment(last.id, patch);
                 }
@@ -1976,14 +2000,14 @@ export default function HomePage() {
                   toast.error("Unsupported audio format", check.reason);
                   return;
                 }
-                const url = URL.createObjectURL(file);
-                const measured = await measureAudioDuration(url).catch(() => null);
+                const persistedUrl = await putAsset(file);
+                const measured = await measureAudioDuration(persistedUrl).catch(() => null);
                 addMusicSegment();
                 setEditingMusicId(null);
                 setMusicPanelOpen(false);
                 const last = (useStore.getState().project.music_segments ?? []).slice(-1)[0];
                 if (last) {
-                  const patch: Partial<Omit<MusicSegment, "id">> = { output_url: url, name: file.name.replace(/\.[^.]+$/, "") };
+                  const patch: Partial<Omit<MusicSegment, "id">> = { output_url: persistedUrl, name: file.name.replace(/\.[^.]+$/, "") };
                   if (measured && Number.isFinite(measured) && measured > 0) patch.duration_s = measured;
                   updateMusicSegment(last.id, patch);
                 }
@@ -2472,39 +2496,58 @@ function PreviewAudio({
     musicSegRefs.current.forEach((a) => { a.volume = vol; });
   }, [playheadSeconds, voSegments]);
 
+  const resolvedMusicUrl = useAssetUrl(musicUrl);
+
   return (
     <div style={{ display: "none" }} aria-hidden>
-      {musicUrl ? (
-        <audio ref={musicRef} src={musicUrl} preload="auto" />
+      {resolvedMusicUrl ? (
+        <audio ref={musicRef} src={resolvedMusicUrl} preload="auto" />
       ) : null}
       {musicSegments.map((seg) =>
         seg.output_url ? (
-          <audio
+          <RegisteredAudio
             key={seg.id}
-            ref={(el) => {
-              if (el) musicSegRefs.current.set(seg.id, el);
-              else musicSegRefs.current.delete(seg.id);
-            }}
-            src={seg.output_url}
-            preload="auto"
+            url={seg.output_url}
+            onMount={(el) => musicSegRefs.current.set(seg.id, el)}
+            onUnmount={() => musicSegRefs.current.delete(seg.id)}
           />
         ) : null,
       )}
       {voSegments.map((seg) =>
         seg.output_url ? (
-          <audio
+          <RegisteredAudio
             key={seg.id}
-            ref={(el) => {
-              if (el) voRefs.current.set(seg.id, el);
-              else voRefs.current.delete(seg.id);
-            }}
-            src={seg.output_url}
-            preload="auto"
+            url={seg.output_url}
+            onMount={(el) => voRefs.current.set(seg.id, el)}
+            onUnmount={() => voRefs.current.delete(seg.id)}
           />
         ) : null,
       )}
     </div>
   );
+}
+
+// Helper for PreviewAudio: resolves assetdb URIs and forwards the audio
+// element to the parent's ref Map so play/pause/duck logic can drive it.
+function RegisteredAudio({
+  url,
+  onMount,
+  onUnmount,
+}: {
+  url: string;
+  onMount: (el: HTMLAudioElement) => void;
+  onUnmount: () => void;
+}) {
+  const resolved = useAssetUrl(url);
+  const ref = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (el) onMount(el);
+    return () => onUnmount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolved]);
+  if (!resolved) return null;
+  return <audio ref={ref} src={resolved} preload="auto" />;
 }
 
 /* ───────────── VO TRACK ───────────── */
@@ -2932,14 +2975,15 @@ function PreviewStage({
   const motionOutput =
     activeVersion && activeVersion.kind === "clip" ? activeVersion.output_url : undefined;
   const motionVideoUrl =
-    motionOutput && /^(https?:|blob:|data:video)/.test(motionOutput) ? motionOutput : null;
+    motionOutput && /^(https?:|blob:|data:video|assetdb:)/.test(motionOutput) ? motionOutput : null;
+  const resolvedMotionUrl = useAssetUrl(motionVideoUrl);
 
   // Imperative video.play() / pause() — autoPlay doesn't re-trigger when the
   // attribute changes on an already-mounted element, and an effect run after a
   // click still counts as a user-gesture continuation for a muted source.
   useEffect(() => {
     const v = videoRef.current;
-    if (!v || !motionVideoUrl) return;
+    if (!v || !resolvedMotionUrl) return;
     if (isPlaying) {
       try { v.currentTime = 0; } catch { /* ignore seek errors */ }
       v.play().catch((err: unknown) => {
@@ -2948,7 +2992,7 @@ function PreviewStage({
     } else {
       try { v.pause(); } catch { /* ignore */ }
     }
-  }, [isPlaying, motionVideoUrl]);
+  }, [isPlaying, resolvedMotionUrl]);
 
   if (!section) {
     return (
@@ -2969,6 +3013,7 @@ function PreviewStage({
       ? (motionOutput.slice("kenburns:".length) as "in" | "out" | "left" | "right")
       : null;
   const stillUrl = referencedStill?.output_url ?? null;
+  const resolvedStillUrl = useAssetUrl(stillUrl);
 
   const aspectRatio =
     project.aspect === "16:9" ? "16 / 9" : project.aspect === "1:1" ? "1 / 1" : "9 / 16";
@@ -3006,21 +3051,21 @@ function PreviewStage({
               isPlaying={isPlaying}
               duration={section.duration_s}
             />
-          ) : motionVideoUrl ? (
+          ) : resolvedMotionUrl ? (
             <video
               ref={videoRef}
-              key={motionVideoUrl}
-              src={motionVideoUrl}
+              key={resolvedMotionUrl}
+              src={resolvedMotionUrl}
               className="stage-video"
               muted
               loop
               playsInline
               style={gradeFilter ? { filter: gradeFilter } : undefined}
             />
-          ) : stillUrl ? (
+          ) : resolvedStillUrl ? (
             <img
-              key={`${stillUrl}|${kbDirection}|${section.duration_s}`}
-              src={stillUrl}
+              key={`${resolvedStillUrl}|${kbDirection}|${section.duration_s}`}
+              src={resolvedStillUrl}
               alt={section.title}
               className={`stage-img${kbDirection ? ` kb kb-${kbDirection}` : ""}`}
               style={{
@@ -3047,7 +3092,7 @@ function PreviewStage({
               }}
             >
               {g.image_url ? (
-                <img src={g.image_url} alt={g.text || g.label} className="stage-graphic-img" />
+                <AssetImg src={g.image_url} alt={g.text || g.label} className="stage-graphic-img" />
               ) : (
                 <span>{g.text}</span>
               )}
@@ -3712,7 +3757,7 @@ function MusicEditor({
       </Field>
       {music?.output_url ? (
         <Field label="Preview">
-          <audio src={music.output_url} controls className="vo-audio" />
+          <AssetAudio src={music.output_url} controls className="vo-audio" />
         </Field>
       ) : null}
       {job?.status === "error" ? (
@@ -4035,9 +4080,9 @@ function VOSegmentEditor({
                 toast.error("Unsupported audio format", check.reason);
                 return;
               }
-              const url = URL.createObjectURL(file);
-              const measured = await measureAudioDuration(url).catch(() => null);
-              const patch: Partial<Omit<typeof segment, "id">> = { output_url: url };
+              const persistedUrl = await putAsset(file);
+              const measured = await measureAudioDuration(persistedUrl).catch(() => null);
+              const patch: Partial<Omit<typeof segment, "id">> = { output_url: persistedUrl };
               if (measured && Number.isFinite(measured) && measured > 0) {
                 patch.duration_s = measured;
               }
@@ -4094,7 +4139,7 @@ function VOSegmentEditor({
       </div>
       {segment.output_url ? (
         <Field label="Preview">
-          <audio src={segment.output_url} controls className="vo-audio" />
+          <AssetAudio src={segment.output_url} controls className="vo-audio" />
         </Field>
       ) : null}
       {job?.status === "error" ? (
@@ -4158,10 +4203,10 @@ function MusicSegmentEditor({
                 toast.error("Unsupported audio format", check.reason);
                 return;
               }
-              const url = URL.createObjectURL(file);
-              const measured = await measureAudioDuration(url).catch(() => null);
+              const persistedUrl = await putAsset(file);
+              const measured = await measureAudioDuration(persistedUrl).catch(() => null);
               const patch: Partial<Omit<MusicSegment, "id">> = {
-                output_url: url,
+                output_url: persistedUrl,
                 name: file.name.replace(/\.[^.]+$/, ""),
               };
               if (measured && Number.isFinite(measured) && measured > 0) {
@@ -4228,7 +4273,7 @@ function MusicSegmentEditor({
       </div>
       {segment.output_url ? (
         <Field label="Preview">
-          <audio src={segment.output_url} controls className="vo-audio" />
+          <AssetAudio src={segment.output_url} controls className="vo-audio" />
         </Field>
       ) : null}
       {job?.status === "error" ? (
@@ -4294,10 +4339,10 @@ function ImportedClipPanel({
       const check = canBrowserPlayVideo(file);
       if (!check.ok) { toast.error("Unsupported video format", check.reason); return; }
     }
-    const url = URL.createObjectURL(file);
+    const persistedUrl = isVid ? await putAsset(file) : await blobToDataUrl(file);
     if (isVid) {
       if (activeVersion && activeVersion.kind === "clip") {
-        updateClipVersion(section.id, activeVersion.id, { output_url: url });
+        updateClipVersion(section.id, activeVersion.id, { output_url: persistedUrl });
       }
       const poster = await extractVideoPosterDataUrl(file);
       if (poster && still) {
@@ -4306,7 +4351,7 @@ function ImportedClipPanel({
       toast.success("Video re-imported", file.name);
     } else {
       if (still) {
-        updateStill(section.id, still.id, { output_url: url });
+        updateStill(section.id, still.id, { output_url: persistedUrl });
         if (activeVersion && activeVersion.kind === "clip" && activeVersion.output_url) {
           updateClipVersion(section.id, activeVersion.id, { output_url: undefined });
         }
@@ -4325,9 +4370,9 @@ function ImportedClipPanel({
       </div>
       <div className="imported-clip-preview">
         {isVideoUrl ? (
-          <video src={isVideoUrl} controls className="imported-clip-media" />
+          <AssetVideo src={isVideoUrl} controls className="imported-clip-media" />
         ) : stillUrl ? (
-          <img src={stillUrl} alt={section.title} className="imported-clip-media" />
+          <AssetImg src={stillUrl} alt={section.title} className="imported-clip-media" />
         ) : (
           <div className="imported-clip-empty">no preview</div>
         )}
@@ -4680,8 +4725,12 @@ function FlowPanel({
           aspect: project.aspect,
           apiToken: token,
         });
+        // Replicate returns a `replicate.delivery` signed URL that expires
+        // in ~24h. Inline the video into IndexedDB so it survives expiry
+        // and across reloads.
+        const persisted = await fetchToAsset(videoUrl).catch(() => videoUrl);
         updateClipVersion(section.id, activeVersion.id, {
-          output_url: videoUrl,
+          output_url: persisted,
           still_ref: stillToUse.id,
         });
         clearJob(jobKey);
@@ -4726,8 +4775,11 @@ function FlowPanel({
           aspect: project.aspect,
           apiToken: token,
         });
+        // Runway returns a short-lived signed URL — inline the bytes into
+        // IndexedDB so the clip survives past expiry and across refresh.
+        const persisted = await fetchToAsset(videoUrl).catch(() => videoUrl);
         updateClipVersion(section.id, activeVersion.id, {
-          output_url: videoUrl,
+          output_url: persisted,
           still_ref: stillToUse.id,
         });
         clearJob(jobKey);
