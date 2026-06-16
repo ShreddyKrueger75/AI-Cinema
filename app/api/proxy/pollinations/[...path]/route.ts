@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAllowedOrigin } from "@/lib/app-url";
 
 // Server-side proxy for image.pollinations.ai used ONLY when the user
 // has a Pollinations token saved. Keeps the token out of the URL
@@ -8,6 +9,7 @@ import { NextResponse } from "next/server";
 // browser — they don't need a proxy.
 
 const POLLINATIONS_BASE = "https://image.pollinations.ai";
+const POLLINATIONS_HOST = "image.pollinations.ai";
 
 export const runtime = "nodejs";
 
@@ -15,6 +17,13 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
+  if (!isAllowedOrigin(request)) {
+    return NextResponse.json(
+      { error: "Forbidden: origin not allowed" },
+      { status: 403 },
+    );
+  }
+
   const key = request.headers.get("x-provider-key");
   if (!key) {
     return NextResponse.json(
@@ -26,6 +35,15 @@ export async function GET(
   const { path } = await params;
   const incomingUrl = new URL(request.url);
   const target = `${POLLINATIONS_BASE}/${path.join("/")}${incomingUrl.search}`;
+
+  try {
+    const parsed = new URL(target);
+    if (parsed.host !== POLLINATIONS_HOST) {
+      return NextResponse.json({ error: "Invalid upstream" }, { status: 400 });
+    }
+  } catch {
+    return NextResponse.json({ error: "Invalid upstream URL" }, { status: 400 });
+  }
 
   const upstream = await fetch(target, {
     headers: {

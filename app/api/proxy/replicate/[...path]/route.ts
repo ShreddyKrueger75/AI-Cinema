@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAllowedOrigin } from "@/lib/app-url";
 
 // Server-side proxy for api.replicate.com.
 // Replicate doesn't send CORS headers, so browser calls fail with
@@ -8,10 +9,21 @@ import { NextResponse } from "next/server";
 // or logged.
 
 const REPLICATE_BASE = "https://api.replicate.com";
+const REPLICATE_HOST = "api.replicate.com";
 
 export const runtime = "nodejs";
 
 async function relay(request: Request, pathParts: string[]) {
+  // Origin check: refuse cross-site or scripted invocations. Our own
+  // browser code always sends a same-origin Origin header; curl / random
+  // sites either omit it or send something else.
+  if (!isAllowedOrigin(request)) {
+    return NextResponse.json(
+      { error: "Forbidden: origin not allowed" },
+      { status: 403 },
+    );
+  }
+
   const key = request.headers.get("x-provider-key");
   if (!key) {
     return NextResponse.json(
@@ -23,6 +35,18 @@ async function relay(request: Request, pathParts: string[]) {
   const path = pathParts.join("/");
   const incomingUrl = new URL(request.url);
   const target = `${REPLICATE_BASE}/${path}${incomingUrl.search}`;
+
+  // Defense in depth: confirm the resolved URL stays on the Replicate host.
+  // WHATWG URL parsing handles most weird inputs, but a future routing change
+  // (or a userinfo-laden path) shouldn't be able to swap upstreams silently.
+  try {
+    const parsed = new URL(target);
+    if (parsed.host !== REPLICATE_HOST) {
+      return NextResponse.json({ error: "Invalid upstream" }, { status: 400 });
+    }
+  } catch {
+    return NextResponse.json({ error: "Invalid upstream URL" }, { status: 400 });
+  }
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${key}`,

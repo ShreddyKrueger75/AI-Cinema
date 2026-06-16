@@ -2,13 +2,31 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { verifyUser, isKvConfigured } from "@/lib/users";
 
-// Auth.js refuses to start without AUTH_SECRET. On preview deploys where the
-// dashboard env var isn't set yet, fall back to a per-commit deterministic
-// secret so /api/auth/session returns 200 + an empty body instead of 500ing
-// 16× per page load. Production must set a real AUTH_SECRET (see issue #3).
-const AUTH_SECRET =
-  process.env.AUTH_SECRET ||
-  `ai-cinema-preview-fallback-${process.env.VERCEL_GIT_COMMIT_SHA ?? "local"}-do-not-use-in-prod`;
+// Auth.js refuses to start without AUTH_SECRET. The fallback was a
+// per-commit deterministic value so preview deploys without a configured
+// secret would return 200 instead of 500. That secret is derived from the
+// public commit SHA — *anyone* can forge JWTs against it. In production we
+// now refuse to *serve requests* without a real AUTH_SECRET; the check is
+// deferred past the build-data-collection phase so deploys still succeed
+// when an env var is added later in the dashboard. Preview
+// (VERCEL_ENV=preview) and dev keep the deterministic fallback.
+function resolveAuthSecret(): string {
+  if (process.env.AUTH_SECRET) return process.env.AUTH_SECRET;
+  // During `next build` the framework imports auth modules to collect page
+  // data. Don't throw there — only when serving real traffic.
+  const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+  const isProduction =
+    process.env.NODE_ENV === "production" &&
+    process.env.VERCEL_ENV !== "preview" &&
+    !isBuildPhase;
+  if (isProduction) {
+    throw new Error(
+      "AUTH_SECRET is required in production. Generate one with `openssl rand -base64 32` and set it in your Vercel project env.",
+    );
+  }
+  return `ai-cinema-preview-fallback-${process.env.VERCEL_GIT_COMMIT_SHA ?? "local"}-do-not-use-in-prod`;
+}
+const AUTH_SECRET = resolveAuthSecret();
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   secret: AUTH_SECRET,

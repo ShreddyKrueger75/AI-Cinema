@@ -1,6 +1,6 @@
 "use client";
 
-import type { Aspect, Project, Section, Transition } from "./types";
+import type { Aspect, GraphicOverlay, Project, Section, Transition } from "./types";
 import { buildCubeLUT, buildFFmpegGradeFilter } from "./grade";
 
 export type RenderProgress = {
@@ -90,6 +90,51 @@ function renderTitleCardPng(opts: {
   const lineHeight = fontSize * 1.2;
   const totalHeight = lines.length * lineHeight;
   const startY = opts.h / 2 - totalHeight / 2 + lineHeight / 2;
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], opts.w / 2, startY + i * lineHeight);
+  }
+  const dataUrl = canvas.toDataURL("image/png");
+  const base64 = dataUrl.split(",")[1];
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+// Render a graphic overlay (text) as a transparent PNG sized to the frame.
+// Layout matches the CSS preview: bold, centered, positioned top/center/bottom
+// at 4% margin, font size scales with the smaller dimension, drop shadow.
+function renderGraphicOverlayPng(opts: {
+  text: string;
+  w: number;
+  h: number;
+  font: string;
+  color: string;
+  position: "top" | "center" | "bottom";
+}): Uint8Array {
+  const canvas = document.createElement("canvas");
+  canvas.width = opts.w;
+  canvas.height = opts.h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas 2d context not available");
+  ctx.clearRect(0, 0, opts.w, opts.h);
+  const fontSize = Math.round(Math.min(opts.w, opts.h) * 0.06);
+  ctx.fillStyle = opts.color;
+  ctx.font = `bold ${fontSize}px ${opts.font.split(" ")[0] || "sans-serif"}, system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor = "rgba(0,0,0,0.6)";
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 2;
+  const lines = wrapLines(ctx, opts.text, opts.w * 0.85);
+  const lineHeight = fontSize * 1.2;
+  const totalHeight = lines.length * lineHeight;
+  const margin = opts.h * 0.04;
+  let centerY: number;
+  if (opts.position === "top") centerY = margin + totalHeight / 2;
+  else if (opts.position === "bottom") centerY = opts.h - margin - totalHeight / 2;
+  else centerY = opts.h / 2;
+  const startY = centerY - totalHeight / 2 + lineHeight / 2;
   for (let i = 0; i < lines.length; i++) {
     ctx.fillText(lines[i], opts.w / 2, startY + i * lineHeight);
   }
@@ -392,8 +437,11 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
   let audioMixName: string | null = null;
 
   const voWithAudio = project.vo_segments.filter((v) => v.output_url && v.duration_s > 0);
+  const musicSegsWithAudio = (project.music_segments ?? []).filter(
+    (m) => m.output_url && m.duration_s > 0,
+  );
   const hasMusic = !!project.music_track?.output_url;
-  if (voWithAudio.length > 0 || hasMusic) {
+  if (voWithAudio.length > 0 || hasMusic || musicSegsWithAudio.length > 0) {
     onProgress?.({ phase: "encoding", pct: 80, message: "Mixing audio (VO + music)…" });
     const inputs: string[] = [];
     const filterParts: string[] = [];
@@ -401,6 +449,10 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
     let inputIndex = 0;
 
     const audioTotalSeconds = totalVideoSeconds;
+    // Duck music whenever any VO exists at all (static ducking — dynamic
+    // sidechain would be cleaner but isn't available in the minimal wasm
+    // build).
+    const musicVolume = voWithAudio.length > 0 ? "0.35" : "0.7";
 
     if (hasMusic) {
       const musicData = await fetchFile(project.music_track!.output_url!);
@@ -409,9 +461,28 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
       audioFiles.push(musicName);
       inputs.push("-i", musicName);
       filterParts.push(
-        `[${inputIndex}:a]aresample=44100,atrim=0:${audioTotalSeconds.toFixed(2)},apad=whole_dur=${audioTotalSeconds.toFixed(2)},volume=${voWithAudio.length > 0 ? "0.35" : "0.7"}[mus]`,
+        `[${inputIndex}:a]aresample=44100,atrim=0:${audioTotalSeconds.toFixed(2)},apad=whole_dur=${audioTotalSeconds.toFixed(2)},volume=${musicVolume}[mus]`,
       );
       mixLabels.push("[mus]");
+      inputIndex += 1;
+    }
+
+    // Music segments — positioned by start_s like VO but at music-level
+    // volume. Each segment's audio is trimmed to its duration_s window then
+    // delayed onto the timeline.
+    for (let i = 0; i < musicSegsWithAudio.length; i++) {
+      const seg = musicSegsWithAudio[i];
+      const name = `mseg_${i}.mp3`;
+      const data = await fetchFile(seg.output_url!);
+      await ffmpeg.writeFile(name, data);
+      audioFiles.push(name);
+      inputs.push("-i", name);
+      const delayMs = Math.max(0, Math.round(seg.start_s * 1000));
+      const segDur = Math.max(0.1, seg.duration_s);
+      filterParts.push(
+        `[${inputIndex}:a]aresample=44100,atrim=0:${segDur.toFixed(2)},asetpts=PTS-STARTPTS,adelay=${delayMs}|${delayMs},volume=${musicVolume}[mseg${i}]`,
+      );
+      mixLabels.push(`[mseg${i}]`);
       inputIndex += 1;
     }
 
@@ -460,17 +531,93 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
   // via the built-in `eq` + `colorbalance` (+ optional `curves`) filters
   // instead. `buildCubeLUT` is still kept around for the Export LUT button.
   void buildCubeLUT;
-  const vfChain = project.grade
-    ? ["-vf", buildFFmpegGradeFilter(project.grade)]
-    : [];
+  const gradeFilter = project.grade ? buildFFmpegGradeFilter(project.grade) : null;
+
+  // Prepare graphic overlays — one PNG per graphic (transparent background
+  // for text, or the imported image file). Filter graph chains them with
+  // time-gated `enable` so each shows only in its window.
+  const graphics: GraphicOverlay[] = (project.graphics ?? []).filter(
+    (g) => g.duration_s > 0 && g.start_s < totalVideoSeconds && (g.text || g.image_url),
+  );
+  const graphicFiles: string[] = [];
+  const graphicInputs: string[] = [];
+  for (let i = 0; i < graphics.length; i++) {
+    const g = graphics[i];
+    const name = `graphic_${i}.png`;
+    if (g.image_url) {
+      try {
+        const data = await fetchFile(g.image_url);
+        await ffmpeg.writeFile(name, data);
+      } catch {
+        continue;
+      }
+    } else {
+      const png = renderGraphicOverlayPng({
+        text: g.text,
+        w,
+        h,
+        font: g.font ?? project.title_settings?.font ?? "JetBrains Mono",
+        color: g.color ?? project.title_settings?.color ?? "#f4f1ea",
+        position: g.position ?? "center",
+      });
+      await ffmpeg.writeFile(name, png);
+    }
+    graphicFiles.push(name);
+    graphicInputs.push("-i", name);
+  }
+
+  // Build the video filter graph: grade → overlay graphic_0 → overlay
+  // graphic_1 → ... → [vout]
+  const baseLabel = "[0:v]";
+  const filterChain: string[] = [];
+  const gradedLabel = gradeFilter ? "[vg]" : baseLabel;
+  if (gradeFilter) {
+    filterChain.push(`${baseLabel}${gradeFilter}[vg]`);
+  }
+  let currentLabel = gradedLabel;
+  // Inputs in the final ffmpeg.exec: index 0 = out_mux.mp4, index 1 =
+  // audioMixName (if present), then graphics. Compute the offset.
+  const graphicsInputOffset = audioMixName ? 2 : 1;
+  for (let i = 0; i < graphicFiles.length; i++) {
+    const g = graphics[i];
+    const startS = Math.max(0, g.start_s);
+    const endS = Math.min(totalVideoSeconds, g.start_s + g.duration_s);
+    // For image graphics, scale to fit max 60% of frame; for text PNGs we
+    // rendered at full WxH already so just position at origin.
+    const isImage = !!g.image_url;
+    const enable = `enable='between(t,${startS.toFixed(2)},${endS.toFixed(2)})'`;
+    const inputIdx = graphicsInputOffset + i;
+    const nextLabel = `[vov${i}]`;
+    if (isImage) {
+      const scale = `scale=w='if(gt(iw,ih),min(${w}*0.6,iw),-1)':h='if(gt(iw,ih),-1,min(${h}*0.6,ih))'`;
+      const yExpr =
+        g.position === "top"
+          ? `${Math.round(h * 0.04)}`
+          : g.position === "bottom"
+          ? `H-h-${Math.round(h * 0.04)}`
+          : "(H-h)/2";
+      filterChain.push(
+        `[${inputIdx}:v]${scale}[gimg${i}];${currentLabel}[gimg${i}]overlay=x=(W-w)/2:y=${yExpr}:${enable}${nextLabel}`,
+      );
+    } else {
+      // Text PNG already sized WxH with position baked in.
+      filterChain.push(`${currentLabel}[${inputIdx}:v]overlay=0:0:${enable}${nextLabel}`);
+    }
+    currentLabel = nextLabel;
+  }
+  filterChain.push(`${currentLabel}null[vout]`);
+  const usingFilterGraph = filterChain.length > 1 || !!gradeFilter;
+  const filterArgs = usingFilterGraph
+    ? ["-filter_complex", filterChain.join(";"), "-map", "[vout]"]
+    : ["-map", "0:v"];
 
   if (audioMixName) {
     await ffmpeg.exec([
       "-i", "out_mux.mp4",
       "-i", audioMixName,
-      "-map", "0:v",
+      ...graphicInputs,
+      ...filterArgs,
       "-map", "1:a",
-      ...vfChain,
       "-c:v", "libx264",
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
@@ -481,7 +628,8 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
   } else {
     await ffmpeg.exec([
       "-i", "out_mux.mp4",
-      ...vfChain,
+      ...graphicInputs,
+      ...filterArgs,
       "-c:v", "libx264",
       "-pix_fmt", "yuv420p",
       "-movflags", "+faststart",
@@ -498,6 +646,7 @@ export async function renderProject(opts: RenderOptions): Promise<{ url: string;
     "out_mux.mp4",
     "out.mp4",
     ...audioFiles,
+    ...graphicFiles,
     ...(audioMixName ? [audioMixName] : []),
   ];
   for (const n of cleanup) {

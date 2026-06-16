@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAllowedOrigin } from "@/lib/app-url";
 
 const RUNWAY_BASE = "https://api.dev.runwayml.com";
 const RUNWAY_VERSION = "2024-11-06";
@@ -6,6 +7,13 @@ const RUNWAY_VERSION = "2024-11-06";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  if (!isAllowedOrigin(request)) {
+    return NextResponse.json(
+      { error: "Forbidden: origin not allowed" },
+      { status: 403 },
+    );
+  }
+
   const auth = request.headers.get("authorization");
   if (!auth) {
     return NextResponse.json({ error: "Missing Authorization header" }, { status: 401 });

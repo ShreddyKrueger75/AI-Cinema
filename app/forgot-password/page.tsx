@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import {
   createPasswordResetToken,
   isKvConfigured,
   isResendConfigured,
 } from "@/lib/users";
 import { sendPasswordResetEmail } from "@/lib/email";
+import { getAppUrl } from "@/lib/app-url";
 
 export default async function ForgotPasswordPage({
   searchParams,
@@ -26,12 +26,11 @@ export default async function ForgotPasswordPage({
     try {
       const token = await createPasswordResetToken(email);
       if (token) {
-        const hdrs = await headers();
-        const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "localhost:3000";
-        const proto =
-          hdrs.get("x-forwarded-proto") ??
-          (host.includes("localhost") ? "http" : "https");
-        const resetUrl = `${proto}://${host}/reset-password/${token}`;
+        // Critical: build the reset URL from env config, NOT request headers.
+        // An attacker who can set the Host header would otherwise have the
+        // server email a reset link pointing at their domain — full account
+        // takeover when the victim clicks it.
+        const resetUrl = `${getAppUrl()}/reset-password/${token}`;
         await sendPasswordResetEmail(email, resetUrl);
       }
       // Always show the same screen — never reveal whether the email exists.

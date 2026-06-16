@@ -2362,6 +2362,7 @@ export default function HomePage() {
         isPlaying={playPosition !== null}
         playheadSeconds={playheadSeconds}
         musicUrl={project.music_track?.output_url ?? null}
+        musicSegments={project.music_segments ?? []}
         voSegments={project.vo_segments}
       />
       <ToastViewport />
@@ -2374,18 +2375,22 @@ function PreviewAudio({
   isPlaying,
   playheadSeconds,
   musicUrl,
+  musicSegments,
   voSegments,
 }: {
   isPlaying: boolean;
   playheadSeconds: number;
   musicUrl: string | null;
+  musicSegments: MusicSegment[];
   voSegments: VOSegment[];
 }) {
   const musicRef = useRef<HTMLAudioElement | null>(null);
+  const musicSegRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
   const voRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
 
-  // Music: start/stop with playback, seek to playhead on start.
-  // Re-seeking on every tick would fight the audio's natural playback.
+  // Music (legacy single-track): start/stop with playback, seek to playhead
+  // on start. Re-seeking on every tick would fight the audio's natural
+  // playback.
   useEffect(() => {
     const a = musicRef.current;
     if (!a) return;
@@ -2400,6 +2405,33 @@ function PreviewAudio({
     // playheadSeconds intentionally excluded — only re-seek on play/stop or url change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying, musicUrl]);
+
+  // Music segments: same window-gating as VO. Each segment is positioned on
+  // the timeline by start_s and plays for duration_s.
+  useEffect(() => {
+    if (!isPlaying) {
+      musicSegRefs.current.forEach((a) => {
+        try { a.pause(); } catch { /* ignore */ }
+      });
+      return;
+    }
+    for (const seg of musicSegments) {
+      const a = musicSegRefs.current.get(seg.id);
+      if (!a || !seg.output_url) continue;
+      const segEnd = seg.start_s + seg.duration_s;
+      const inRange = playheadSeconds >= seg.start_s && playheadSeconds < segEnd;
+      if (inRange) {
+        if (a.paused) {
+          try { a.currentTime = Math.max(0, playheadSeconds - seg.start_s); } catch { /* ignore */ }
+          a.play().catch((err: unknown) => {
+            console.warn("[preview] musicSeg.play() rejected:", err);
+          });
+        }
+      } else if (!a.paused) {
+        try { a.pause(); } catch { /* ignore */ }
+      }
+    }
+  }, [isPlaying, playheadSeconds, musicSegments]);
 
   // VO: gate each segment by whether the playhead is inside its window.
   useEffect(() => {
@@ -2427,17 +2459,17 @@ function PreviewAudio({
     }
   }, [isPlaying, playheadSeconds, voSegments]);
 
-  // Auto-duck music under VO at -6dB (≈ 0.5x).
+  // Auto-duck music (both legacy track and segments) under VO at -6dB (≈ 0.5x).
   useEffect(() => {
-    const a = musicRef.current;
-    if (!a) return;
     const ducking = voSegments.some(
       (seg) =>
         seg.output_url &&
         playheadSeconds >= seg.start_s &&
         playheadSeconds < seg.start_s + seg.duration_s,
     );
-    a.volume = ducking ? 0.45 : 0.9;
+    const vol = ducking ? 0.45 : 0.9;
+    if (musicRef.current) musicRef.current.volume = vol;
+    musicSegRefs.current.forEach((a) => { a.volume = vol; });
   }, [playheadSeconds, voSegments]);
 
   return (
@@ -2445,6 +2477,19 @@ function PreviewAudio({
       {musicUrl ? (
         <audio ref={musicRef} src={musicUrl} preload="auto" />
       ) : null}
+      {musicSegments.map((seg) =>
+        seg.output_url ? (
+          <audio
+            key={seg.id}
+            ref={(el) => {
+              if (el) musicSegRefs.current.set(seg.id, el);
+              else musicSegRefs.current.delete(seg.id);
+            }}
+            src={seg.output_url}
+            preload="auto"
+          />
+        ) : null,
+      )}
       {voSegments.map((seg) =>
         seg.output_url ? (
           <audio
