@@ -578,6 +578,47 @@ export default function HomePage() {
     ]).finally(() => setHydrated(true));
   }, []);
 
+  // Recover from sessionStorage draft on mount (e.g. after accidental tab close)
+  useEffect(() => {
+    if (!hydrated) return;
+    const draftStr = sessionStorage.getItem("cinema_draft_project");
+    if (!draftStr) return;
+    try {
+      const draft = JSON.parse(draftStr) as Project;
+      const draftSectionId = sessionStorage.getItem("cinema_draft_activeSection") || null;
+      confirmAsk({
+        title: "Recover unsaved draft?",
+        message: "It looks like you had a project open. Would you like to restore it?",
+        confirm_label: "Restore",
+        cancel_label: "Start fresh",
+        destructive: false,
+        onConfirm: () => {
+          useStore.getState().setProject(draft);
+          useStore.getState().setActiveSection(draftSectionId);
+          sessionStorage.removeItem("cinema_draft_project");
+          sessionStorage.removeItem("cinema_draft_activeSection");
+          toast.info("Draft restored");
+        },
+      });
+    } catch {
+      // Draft is corrupted, ignore
+    }
+  }, [hydrated]);
+
+  // Save project to sessionStorage on beforeunload to recover from accidental tab close
+  useEffect(() => {
+    const saveOnUnload = () => {
+      try {
+        sessionStorage.setItem("cinema_draft_project", JSON.stringify(project));
+        sessionStorage.setItem("cinema_draft_activeSection", activeSectionId || "");
+      } catch {
+        // Session storage full or unavailable, ignore
+      }
+    };
+    window.addEventListener("beforeunload", saveOnUnload);
+    return () => window.removeEventListener("beforeunload", saveOnUnload);
+  }, [project, activeSectionId]);
+
   const historyPastLen = useHistory((s) => s.past.length);
   const historyFutureLen = useHistory((s) => s.future.length);
 
@@ -2141,8 +2182,17 @@ export default function HomePage() {
                 projectDuration={project.duration_s}
                 onChange={(patch) => updateGraphic(eg.id, patch)}
                 onRemove={() => {
-                  removeGraphic(eg.id);
-                  setEditingGraphicId(null);
+                  confirmAsk({
+                    title: "Delete graphic?",
+                    message: "This cannot be undone.",
+                    confirm_label: "Delete",
+                    cancel_label: "Keep",
+                    destructive: true,
+                    onConfirm: () => {
+                      removeGraphic(eg.id);
+                      setEditingGraphicId(null);
+                    },
+                  });
                 }}
               />
             </div>
@@ -2185,7 +2235,19 @@ export default function HomePage() {
                 onChange={(patch) => updateVOSegment(seg.id, patch)}
                 onGenerate={() => handleGenerateVO(seg.id)}
                 onDismissError={() => setVoJobs((j) => { const next = { ...j }; delete next[seg.id]; return next; })}
-                onRemove={() => { removeVOSegment(seg.id); setEditingVOId(null); }}
+                onRemove={() => {
+                  confirmAsk({
+                    title: "Delete VO segment?",
+                    message: "The generated audio will be lost.",
+                    confirm_label: "Delete",
+                    cancel_label: "Keep",
+                    destructive: true,
+                    onConfirm: () => {
+                      removeVOSegment(seg.id);
+                      setEditingVOId(null);
+                    },
+                  });
+                }}
               />
             </div>
           </div>
@@ -5040,7 +5102,18 @@ function FlowPanel({
           }
           onSelectVersion={(id) => setActiveVersion(section.id, id)}
           onAddVersion={() => addTitleVersion(section.id)}
-          onRemoveVersion={(id) => removeTitleVersion(section.id, id)}
+          onRemoveVersion={(id) => {
+            const v = section.versions.find(v => v.id === id);
+            if (!v) return;
+            confirmAsk({
+              title: `Delete version ${v.label}?`,
+              message: "This cannot be undone.",
+              confirm_label: "Delete",
+              cancel_label: "Keep",
+              destructive: true,
+              onConfirm: () => removeTitleVersion(section.id, id),
+            });
+          }}
           titleStyleName={project.title_settings?.name}
         />
       ) : (
@@ -5058,13 +5131,35 @@ function FlowPanel({
           motionJob={motionJob}
           onUpdateStill={(stillId, patch) => updateStill(section.id, stillId, patch)}
           onAddStill={() => addStill(section.id)}
-          onRemoveStill={(stillId) => removeStill(section.id, stillId)}
+          onRemoveStill={(stillId) => {
+            const still = section.stills.find(s => s.id === stillId);
+            if (!still) return;
+            confirmAsk({
+              title: `Delete still ${still.label}?`,
+              message: "This cannot be undone.",
+              confirm_label: "Delete",
+              cancel_label: "Keep",
+              destructive: true,
+              onConfirm: () => removeStill(section.id, stillId),
+            });
+          }}
           onSelectStill={(stillId) => setActiveStill(section.id, stillId)}
           onUpdateClipVersion={(versionId, patch) =>
             updateClipVersion(section.id, versionId, patch)
           }
           onAddClipVersion={() => addClipVersion(section.id)}
-          onRemoveClipVersion={(versionId) => removeClipVersion(section.id, versionId)}
+          onRemoveClipVersion={(versionId) => {
+            const v = section.versions.find(v => v.id === versionId && v.kind === "clip");
+            if (!v) return;
+            confirmAsk({
+              title: `Delete version ${v.label}?`,
+              message: "This cannot be undone.",
+              confirm_label: "Delete",
+              cancel_label: "Keep",
+              destructive: true,
+              onConfirm: () => removeClipVersion(section.id, versionId),
+            });
+          }}
           onSelectVersion={(versionId) => setActiveVersion(section.id, versionId)}
           onGenerateStill={handleGenerateStill}
           onGenerateMotion={handleGenerateMotion}
