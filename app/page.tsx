@@ -67,6 +67,28 @@ import { describeRenderPlan, renderProject, terminateFFmpeg, type RenderProgress
 import { buildCubeLUT, gradeDescriptor, gradeToCssFilter } from "@/lib/grade";
 import { putAsset, fetchToAsset, isAssetUri } from "@/lib/asset-store";
 import { useAssetUrl } from "@/lib/use-asset-url";
+import { startJob, abortJob, endJob } from "@/lib/abort-jobs";
+
+// Late-write guards: if the user deleted a section / version / segment
+// while a generation request was in flight, the result write would
+// otherwise reanimate or stomp fresh edits. Check existence before writing.
+function sectionVersionExists(sectionId: string, versionId: string): boolean {
+  const sec = useStore.getState().project.sections.find((s) => s.id === sectionId);
+  return !!sec && sec.versions.some((v) => v.id === versionId);
+}
+function stillExists(sectionId: string, stillId: string): boolean {
+  const sec = useStore.getState().project.sections.find((s) => s.id === sectionId);
+  return !!sec && sec.stills.some((st) => st.id === stillId);
+}
+function voSegmentExists(segId: string): boolean {
+  return useStore.getState().project.vo_segments.some((v) => v.id === segId);
+}
+function musicSegmentExists(segId: string): boolean {
+  return (useStore.getState().project.music_segments ?? []).some((m) => m.id === segId);
+}
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
+}
 
 const ASPECT_OPTIONS: Aspect[] = ["9:16", "16:9", "1:1"];
 
@@ -754,6 +776,8 @@ export default function HomePage() {
         return;
       }
       setMusicSegJobs((j) => ({ ...j, [segmentId]: { status: "running" } }));
+      const jobKey = `music:${segmentId}`;
+      const ctrl = startJob(jobKey);
       try {
         let dataUrl: string;
         if (isReplicateMusicModel(seg.model)) {
@@ -770,8 +794,10 @@ export default function HomePage() {
             prompt: seg.prompt,
             durationSeconds: seg.duration_s,
             apiToken: key,
+            signal: ctrl.signal,
           });
-          dataUrl = await fetchAsDataUrl(url);
+          if (ctrl.signal.aborted) return;
+          dataUrl = await fetchAsDataUrl(url, ctrl.signal);
         } else {
           const key = providerKeys.elevenlabs;
           if (!key) {
@@ -785,13 +811,22 @@ export default function HomePage() {
             prompt: seg.prompt,
             durationMs: Math.round(seg.duration_s * 1000),
             apiKey: key,
+            signal: ctrl.signal,
           });
         }
+        if (ctrl.signal.aborted) return;
+        if (!musicSegmentExists(segmentId)) return;
         updateMusicSegment(segmentId, { output_url: dataUrl });
         setMusicSegJobs((j) => { const next = { ...j }; delete next[segmentId]; return next; });
       } catch (err) {
+        if (isAbortError(err)) {
+          setMusicSegJobs((j) => { const next = { ...j }; delete next[segmentId]; return next; });
+          return;
+        }
         const message = err instanceof Error ? err.message : String(err);
         setMusicSegJobs((j) => ({ ...j, [segmentId]: { status: "error", error: message } }));
+      } finally {
+        endJob(jobKey);
       }
     },
     [project.music_segments, providerKeys.replicate, providerKeys.elevenlabs, updateMusicSegment],
@@ -804,6 +839,8 @@ export default function HomePage() {
       return;
     }
     setMusicJob({ status: "running" });
+    const jobKey = "music_track";
+    const ctrl = startJob(jobKey);
     try {
       let dataUrl: string;
       if (isReplicateMusicModel(music.model)) {
@@ -820,8 +857,10 @@ export default function HomePage() {
           prompt: music.prompt,
           durationSeconds: project.duration_s,
           apiToken: key,
+          signal: ctrl.signal,
         });
-        dataUrl = await fetchAsDataUrl(url);
+        if (ctrl.signal.aborted) return;
+        dataUrl = await fetchAsDataUrl(url, ctrl.signal);
       } else {
         const key = providerKeys.elevenlabs;
         if (!key) {
@@ -835,13 +874,18 @@ export default function HomePage() {
           prompt: music.prompt,
           durationMs: Math.round(project.duration_s * 1000),
           apiKey: key,
+          signal: ctrl.signal,
         });
       }
+      if (ctrl.signal.aborted) return;
       updateMusic({ output_url: dataUrl });
       setMusicJob(null);
     } catch (err) {
+      if (isAbortError(err)) { setMusicJob(null); return; }
       const message = err instanceof Error ? err.message : String(err);
       setMusicJob({ status: "error", error: message });
+    } finally {
+      endJob(jobKey);
     }
   }, [project.music_track, project.duration_s, providerKeys.elevenlabs, providerKeys.replicate, updateMusic]);
 
@@ -865,16 +909,22 @@ export default function HomePage() {
         return;
       }
       setVoJobs((j) => ({ ...j, [segmentId]: { status: "running" } }));
+      const jobKey = `vo:${segmentId}`;
+      const ctrl = startJob(jobKey);
       try {
         const dataUrl = await runElevenLabsTTS({
           voice: seg.voice,
           text: seg.text,
           apiKey: key,
+          signal: ctrl.signal,
         });
+        if (ctrl.signal.aborted) return;
         // Measure the actual audio duration so the segment's window on the
         // timeline matches the generated speech — the 3s default can chop a
         // longer line, and a fully-fit window lets one VO span multiple clips.
         const measured = await measureAudioDuration(dataUrl).catch(() => null);
+        if (ctrl.signal.aborted) return;
+        if (!voSegmentExists(segmentId)) return;
         const projectDuration = useStore.getState().project.duration_s;
         const patch: Partial<Omit<VOSegment, "id">> = { output_url: dataUrl };
         if (measured && Number.isFinite(measured) && measured > 0) {
@@ -888,8 +938,14 @@ export default function HomePage() {
           return next;
         });
       } catch (err) {
+        if (isAbortError(err)) {
+          setVoJobs((j) => { const next = { ...j }; delete next[segmentId]; return next; });
+          return;
+        }
         const message = err instanceof Error ? err.message : String(err);
         setVoJobs((j) => ({ ...j, [segmentId]: { status: "error", error: message } }));
+      } finally {
+        endJob(jobKey);
       }
     },
     [project.vo_segments, providerKeys.elevenlabs, updateVOSegment],
@@ -4154,14 +4210,19 @@ function VOSegmentEditor({
         <span className={`gen-cost ${!hasKey ? "warn" : ""}`}>
           {!hasKey ? "⊘ ElevenLabs key required" : "ElevenLabs · ~$0.001 per char"}
         </span>
-        <button
-          type="button"
-          className="btn primary"
-          disabled={job?.status === "running"}
-          onClick={onGenerate}
-        >
-          {job?.status === "running" ? "● Generating…" : "⏵ Generate VO"}
-        </button>
+        {job?.status === "running" ? (
+          <button
+            type="button"
+            className="btn ghost danger"
+            onClick={() => abortJob(`vo:${segment.id}`)}
+          >
+            ✕ Cancel
+          </button>
+        ) : (
+          <button type="button" className="btn primary" onClick={onGenerate}>
+            ⏵ Generate VO
+          </button>
+        )}
       </div>
     </div>
   );
@@ -4288,14 +4349,19 @@ function MusicSegmentEditor({
         <span className={`gen-cost ${!hasKey ? "warn" : ""}`}>
           {!hasKey ? "⊘ ElevenLabs or Replicate key required" : `${segment.model} · ${segment.duration_s.toFixed(0)}s`}
         </span>
-        <button
-          type="button"
-          className="btn primary"
-          disabled={job?.status === "running"}
-          onClick={onGenerate}
-        >
-          {job?.status === "running" ? "● Generating…" : "⏵ Generate music"}
-        </button>
+        {job?.status === "running" ? (
+          <button
+            type="button"
+            className="btn ghost danger"
+            onClick={() => abortJob(`music:${segment.id}`)}
+          >
+            ✕ Cancel
+          </button>
+        ) : (
+          <button type="button" className="btn primary" onClick={onGenerate}>
+            ⏵ Generate music
+          </button>
+        )}
       </div>
     </div>
   );
@@ -4530,12 +4596,13 @@ function FlowPanel({
       );
       const jobKey = stillJobKey(section.id, activeStill.id);
       setJob(jobKey, { status: "running", startedAt: Date.now() });
+      const ctrl = startJob(jobKey);
       let throttled = false;
       try {
         const headers: HeadersInit = providerKeys.pollinations
           ? { "x-provider-key": providerKeys.pollinations }
           : {};
-        const r = await fetch(url, { credentials: "omit", headers });
+        const r = await fetch(url, { credentials: "omit", headers, signal: ctrl.signal });
         if (!r.ok) {
           let detail = `HTTP ${r.status}`;
           try {
@@ -4553,15 +4620,20 @@ function FlowPanel({
           }
           throw new Error(`Pollinations ${r.status}: ${detail}`);
         }
+        if (ctrl.signal.aborted) return;
         const blob = await r.blob();
+        if (ctrl.signal.aborted) return;
         // Persist as a data URL — blob: URLs die on page refresh, breaking
         // every still on the next load. Pollinations stills are ~150KB so
         // 6 of them fit comfortably in localStorage.
         const dataUrl = await blobToDataUrl(blob);
+        if (!stillExists(section.id, activeStill.id)) return;
         updateStill(section.id, activeStill.id, { output_url: dataUrl });
         clearJob(jobKey);
+        endJob(jobKey);
         return;
       } catch (err) {
+        if (isAbortError(err)) { clearJob(jobKey); endJob(jobKey); return; }
         const message = err instanceof Error ? err.message : String(err);
         const replicateToken = providerKeys.replicate;
         if (throttled && replicateToken) {
@@ -4572,13 +4644,18 @@ function FlowPanel({
               prompt: composedPrompt,
               aspect: project.aspect,
               apiToken: replicateToken,
+              signal: ctrl.signal,
             });
-            const fbDataUrl = await fetchAsDataUrl(fallbackUrl).catch(() => fallbackUrl);
+            if (ctrl.signal.aborted) return;
+            const fbDataUrl = await fetchAsDataUrl(fallbackUrl, ctrl.signal).catch(() => fallbackUrl);
+            if (ctrl.signal.aborted) return;
+            if (!stillExists(section.id, activeStill.id)) return;
             updateStill(section.id, activeStill.id, { output_url: fbDataUrl });
             clearJob(jobKey);
             toast.success("Fallback succeeded", "Generated on Flux Schnell · switch the still's model to make it stick");
             return;
           } catch (fallbackErr) {
+            if (isAbortError(fallbackErr)) { clearJob(jobKey); return; }
             const fbMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
             setJob(jobKey, { status: "error", error: fbMsg });
             toast.error("Flux Schnell fallback failed", fbMsg);
@@ -4592,6 +4669,8 @@ function FlowPanel({
             ? `${message} Wait ~30s, add a Pollinations token (🔑 Keys → Pollinations) from enter.pollinations.ai, or add a Replicate key for automatic Flux Schnell fallback.`
             : message,
         );
+      } finally {
+        endJob(jobKey);
       }
       return;
     }
@@ -4606,6 +4685,7 @@ function FlowPanel({
     if (pid === "replicate" && isReplicateImageModel(modelId)) {
       const token = providerKeys.replicate!;
       setJob(jobKey, { status: "running", startedAt: Date.now() });
+      const ctrl = startJob(jobKey);
       try {
         let referenceImageUrl: string | undefined;
         const refSectionId = parseLastFrameRef(activeStill.input_ref);
@@ -4639,15 +4719,22 @@ function FlowPanel({
           aspect: project.aspect,
           apiToken: token,
           referenceImageUrl,
+          signal: ctrl.signal,
         });
+        if (ctrl.signal.aborted) return;
         // Persist as a data URL — Replicate's signed delivery URLs expire
         // after ~24h, so storing the URL alone breaks every still tomorrow.
-        const dataUrl = await fetchAsDataUrl(url).catch(() => url);
+        const dataUrl = await fetchAsDataUrl(url, ctrl.signal).catch(() => url);
+        if (ctrl.signal.aborted) return;
+        if (!stillExists(section.id, activeStill.id)) return;
         updateStill(section.id, activeStill.id, { output_url: dataUrl });
         clearJob(jobKey);
       } catch (err) {
+        if (isAbortError(err)) { clearJob(jobKey); return; }
         const message = err instanceof Error ? err.message : String(err);
         setJob(jobKey, { status: "error", error: message });
+      } finally {
+        endJob(jobKey);
       }
       return;
     }
@@ -4716,6 +4803,7 @@ function FlowPanel({
         project.brief?.visual,
       );
       setJob(jobKey, { status: "running", startedAt: Date.now() });
+      const ctrl = startJob(jobKey);
       try {
         const videoUrl = await runReplicateMotion({
           model: modelId,
@@ -4724,19 +4812,26 @@ function FlowPanel({
           durationSeconds: activeVersion.motion.duration_s || section.duration_s,
           aspect: project.aspect,
           apiToken: token,
+          signal: ctrl.signal,
         });
+        if (ctrl.signal.aborted) return;
         // Replicate returns a `replicate.delivery` signed URL that expires
         // in ~24h. Inline the video into IndexedDB so it survives expiry
         // and across reloads.
-        const persisted = await fetchToAsset(videoUrl).catch(() => videoUrl);
+        const persisted = await fetchToAsset(videoUrl, ctrl.signal).catch(() => videoUrl);
+        if (ctrl.signal.aborted) return;
+        if (!sectionVersionExists(section.id, activeVersion.id)) return;
         updateClipVersion(section.id, activeVersion.id, {
           output_url: persisted,
-          still_ref: stillToUse.id,
+          still_ref: stillExists(section.id, stillToUse.id) ? stillToUse.id : undefined,
         });
         clearJob(jobKey);
       } catch (err) {
+        if (isAbortError(err)) { clearJob(jobKey); return; }
         const message = err instanceof Error ? err.message : String(err);
         setJob(jobKey, { status: "error", error: message });
+      } finally {
+        endJob(jobKey);
       }
       return;
     }
@@ -4766,6 +4861,7 @@ function FlowPanel({
         project.brief?.visual,
       );
       setJob(jobKey, { status: "running", startedAt: Date.now() });
+      const ctrl = startJob(jobKey);
       try {
         const videoUrl = await runRunwayMotion({
           model: modelId,
@@ -4774,18 +4870,25 @@ function FlowPanel({
           durationSeconds: activeVersion.motion.duration_s || section.duration_s,
           aspect: project.aspect,
           apiToken: token,
+          signal: ctrl.signal,
         });
+        if (ctrl.signal.aborted) return;
         // Runway returns a short-lived signed URL — inline the bytes into
         // IndexedDB so the clip survives past expiry and across refresh.
-        const persisted = await fetchToAsset(videoUrl).catch(() => videoUrl);
+        const persisted = await fetchToAsset(videoUrl, ctrl.signal).catch(() => videoUrl);
+        if (ctrl.signal.aborted) return;
+        if (!sectionVersionExists(section.id, activeVersion.id)) return;
         updateClipVersion(section.id, activeVersion.id, {
           output_url: persisted,
-          still_ref: stillToUse.id,
+          still_ref: stillExists(section.id, stillToUse.id) ? stillToUse.id : undefined,
         });
         clearJob(jobKey);
       } catch (err) {
+        if (isAbortError(err)) { clearJob(jobKey); return; }
         const message = err instanceof Error ? err.message : String(err);
         setJob(jobKey, { status: "error", error: message });
+      } finally {
+        endJob(jobKey);
       }
       return;
     }
@@ -5389,42 +5492,47 @@ function ClipFlowBody({
           ) : (
             <span className="gen-cost">{formatCost(stillCost)} per still</span>
           )}
-          <button
-            type="button"
-            className="btn primary"
-            disabled={stillJob?.status === "running"}
-            onClick={
-              stillJob?.status === "running"
-                ? undefined
-                : !activeStill
+          {stillJob?.status === "running" ? (
+            <button
+              type="button"
+              className="btn ghost danger"
+              onClick={() => activeStill && abortJob(stillJobKey(section.id, activeStill.id))}
+            >
+              ✕ Cancel
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn primary"
+              onClick={
+                !activeStill
                   ? onAddStill
                   : stillNeedsKey
                     ? onOpenProviders
                     : onGenerateStill
-            }
-            title={
-              !activeStill
-                ? "Add a still to start"
-                : stillNeedsKey
-                  ? `Open Providers to add a ${stillProviderName ?? "provider"} key`
-                  : undefined
-            }
-            aria-label={
-              !activeStill
-                ? "Add a new still"
-                : stillNeedsKey
-                  ? `Open Providers to add a ${stillProviderName ?? "provider"} key`
-                  : "Generate still"
-            }
-          >
-            {stillJob?.status === "running"
-              ? "● Generating…"
-              : !activeStill
+              }
+              title={
+                !activeStill
+                  ? "Add a still to start"
+                  : stillNeedsKey
+                    ? `Open Providers to add a ${stillProviderName ?? "provider"} key`
+                    : undefined
+              }
+              aria-label={
+                !activeStill
+                  ? "Add a new still"
+                  : stillNeedsKey
+                    ? `Open Providers to add a ${stillProviderName ?? "provider"} key`
+                    : "Generate still"
+              }
+            >
+              {!activeStill
                 ? "+ Add still first"
                 : stillNeedsKey
                   ? `🔑 Add ${stillProviderName ?? "provider"} key`
-                : "✦ Generate still"}
-          </button>
+                  : "✦ Generate still"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -5614,23 +5722,31 @@ function ClipFlowBody({
           ) : (
             <span className="gen-cost">{formatCost(motionCost)} per version</span>
           )}
-          <button
-            type="button"
-            className="btn primary"
-            disabled={!activeVersion || motionJob?.status === "running"}
-            onClick={motionNeedsKey ? onOpenProviders : onGenerateMotion}
-            title={
-              motionNeedsKey
-                ? `Open Providers to add a ${motionProviderName ?? "provider"} key`
-                : undefined
-            }
-          >
-            {motionJob?.status === "running"
-              ? "● Generating…"
-              : motionNeedsKey
+          {motionJob?.status === "running" ? (
+            <button
+              type="button"
+              className="btn ghost danger"
+              onClick={() => activeVersion && abortJob(motionJobKey(section.id, activeVersion.id))}
+            >
+              ✕ Cancel
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn primary"
+              disabled={!activeVersion}
+              onClick={motionNeedsKey ? onOpenProviders : onGenerateMotion}
+              title={
+                motionNeedsKey
+                  ? `Open Providers to add a ${motionProviderName ?? "provider"} key`
+                  : undefined
+              }
+            >
+              {motionNeedsKey
                 ? `🔑 Add ${motionProviderName ?? "provider"} key`
                 : "✦ Generate motion"}
-          </button>
+            </button>
+          )}
         </div>
       </div>
     </div>
