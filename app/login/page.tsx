@@ -36,9 +36,13 @@ export default async function LoginPage({
       });
     } catch (err) {
       if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
-      const message = err instanceof Error ? err.message : "Sign-in failed";
+      let errMsg = err instanceof Error ? err.message : "Sign-in failed";
+      // Translate internal Next.js error messages to user-friendly text
+      if (errMsg === "CredentialsSignin") {
+        errMsg = "Email or password is incorrect. Try again.";
+      }
       const url = new URL(`/login`, "http://x");
-      url.searchParams.set("error", message);
+      url.searchParams.set("error", errMsg);
       url.searchParams.set("callbackUrl", callbackUrl);
       redirect(`/login?${url.searchParams.toString()}`);
     }
