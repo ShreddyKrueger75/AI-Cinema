@@ -586,6 +586,14 @@ export default function HomePage() {
     try {
       const draft = JSON.parse(draftStr) as Project;
       const draftSectionId = sessionStorage.getItem("cinema_draft_activeSection") || null;
+      // Consume the draft up front so declining (or Esc) never re-prompts;
+      // beforeunload writes a fresh one on the next exit anyway.
+      sessionStorage.removeItem("cinema_draft_project");
+      sessionStorage.removeItem("cinema_draft_activeSection");
+      const persisted = useStore.getState().project;
+      // Zustand persist already restores state on reload; only offer recovery
+      // when the draft has changes the persisted store doesn't.
+      if (draft.updated_at === persisted.updated_at) return;
       confirmAsk({
         title: "Recover unsaved draft?",
         message: "It looks like you had a project open. Would you like to restore it?",
@@ -595,8 +603,6 @@ export default function HomePage() {
         onConfirm: () => {
           useStore.getState().setProject(draft);
           useStore.getState().setActiveSection(draftSectionId);
-          sessionStorage.removeItem("cinema_draft_project");
-          sessionStorage.removeItem("cinema_draft_activeSection");
           toast.info("Draft restored");
         },
       });
@@ -825,9 +831,13 @@ export default function HomePage() {
           const key = providerKeys.replicate;
           if (!key) {
             setMusicSegJobs((j) => { const next = { ...j }; delete next[segmentId]; return next; });
-            if (confirm("Stable Audio runs on Replicate. Open Providers to add a key?")) {
-              setProvidersOpen(true);
-            }
+            confirmAsk({
+              title: "Replicate key needed",
+              message: "Stable Audio runs on Replicate. Open Providers to add a key?",
+              confirm_label: "Open Providers",
+              cancel_label: "Not now",
+              onConfirm: () => setProvidersOpen(true),
+            });
             return;
           }
           const url = await runReplicateMusic({
@@ -843,9 +853,13 @@ export default function HomePage() {
           const key = providerKeys.elevenlabs;
           if (!key) {
             setMusicSegJobs((j) => { const next = { ...j }; delete next[segmentId]; return next; });
-            if (confirm("ElevenLabs needs an API key to generate music. Open Providers to add one?")) {
-              setProvidersOpen(true);
-            }
+            confirmAsk({
+              title: "ElevenLabs key needed",
+              message: "ElevenLabs needs an API key to generate music. Open Providers to add one?",
+              confirm_label: "Open Providers",
+              cancel_label: "Not now",
+              onConfirm: () => setProvidersOpen(true),
+            });
             return;
           }
           dataUrl = await runElevenLabsMusic({
@@ -888,9 +902,13 @@ export default function HomePage() {
         const key = providerKeys.replicate;
         if (!key) {
           setMusicJob(null);
-          if (confirm("Stable Audio runs on Replicate. Open Providers to add a key?")) {
-            setProvidersOpen(true);
-          }
+          confirmAsk({
+            title: "Replicate key needed",
+            message: "Stable Audio runs on Replicate. Open Providers to add a key?",
+            confirm_label: "Open Providers",
+            cancel_label: "Not now",
+            onConfirm: () => setProvidersOpen(true),
+          });
           return;
         }
         const url = await runReplicateMusic({
@@ -906,9 +924,13 @@ export default function HomePage() {
         const key = providerKeys.elevenlabs;
         if (!key) {
           setMusicJob(null);
-          if (confirm("ElevenLabs needs an API key to generate music. Open Providers to add one?")) {
-            setProvidersOpen(true);
-          }
+          confirmAsk({
+            title: "ElevenLabs key needed",
+            message: "ElevenLabs needs an API key to generate music. Open Providers to add one?",
+            confirm_label: "Open Providers",
+            cancel_label: "Not now",
+            onConfirm: () => setProvidersOpen(true),
+          });
           return;
         }
         dataUrl = await runElevenLabsMusic({
@@ -936,13 +958,13 @@ export default function HomePage() {
       if (!seg) return;
       const key = providerKeys.elevenlabs;
       if (!key) {
-        if (
-          confirm(
-            "ElevenLabs needs an API key to generate voice. Open Providers to add one?",
-          )
-        ) {
-          setProvidersOpen(true);
-        }
+        confirmAsk({
+          title: "ElevenLabs key needed",
+          message: "ElevenLabs needs an API key to generate voice. Open Providers to add one?",
+          confirm_label: "Open Providers",
+          cancel_label: "Not now",
+          onConfirm: () => setProvidersOpen(true),
+        });
         return;
       }
       if (!seg.text.trim()) {
@@ -4619,18 +4641,18 @@ function FlowPanel({
     return pid ? !!providerKeys[pid] : false;
   };
   const promptForKey = (providerName: string) => {
-    if (
-      confirm(
-        `${providerName} needs an API key. Open Providers to add one? (Or switch to a free model.)`,
-      )
-    ) {
-      onProviderKeyMissing();
-    }
+    confirmAsk({
+      title: `${providerName} key needed`,
+      message: `${providerName} needs an API key. Open Providers to add one? (Or switch to a free model.)`,
+      confirm_label: "Open Providers",
+      cancel_label: "Not now",
+      onConfirm: () => onProviderKeyMissing(),
+    });
   };
 
   const COST_CAP = 0.5;
 
-  const handleGenerateStill = async () => {
+  const handleGenerateStill = async (opts?: { approvedCost?: boolean }) => {
     if (!activeStill) return;
     const jobKey = stillJobKey(section.id, activeStill.id);
     if (jobs[jobKey]?.status === "running") return;
@@ -4641,11 +4663,17 @@ function FlowPanel({
       project.brief?.visual,
     );
     const estCost = imageModelCost(modelId);
-    if (estCost > COST_CAP) {
-      const ok = confirm(
-        `Heads up — this still costs about $${estCost.toFixed(2)} (cap is $${COST_CAP.toFixed(2)}). Generate anyway?`,
-      );
-      if (!ok) return;
+    if (estCost > COST_CAP && opts?.approvedCost !== true) {
+      confirmAsk({
+        title: "Over the cost cap",
+        message: `Heads up — this still costs about $${estCost.toFixed(2)} (cap is $${COST_CAP.toFixed(2)}). Generate anyway?`,
+        confirm_label: "Generate anyway",
+        cancel_label: "Cancel",
+        onConfirm: () => {
+          void handleGenerateStill({ approvedCost: true });
+        },
+      });
+      return;
     }
 
     if (isImageModelFree(modelId)) {
@@ -4807,18 +4835,24 @@ function FlowPanel({
     );
   };
 
-  const handleGenerateMotion = async () => {
+  const handleGenerateMotion = async (opts?: { approvedCost?: boolean }) => {
     if (!activeVersion || activeVersion.kind !== "clip") return;
     const jobKey = motionJobKey(section.id, activeVersion.id);
     if (jobs[jobKey]?.status === "running") return;
 
     const modelId = activeVersion.motion.model;
     const estMotionCost = motionModelCost(modelId, activeVersion.motion.duration_s);
-    if (estMotionCost > COST_CAP) {
-      const ok = confirm(
-        `Heads up — this motion costs about $${estMotionCost.toFixed(2)} (cap is $${COST_CAP.toFixed(2)}). Generate anyway?`,
-      );
-      if (!ok) return;
+    if (estMotionCost > COST_CAP && opts?.approvedCost !== true) {
+      confirmAsk({
+        title: "Over the cost cap",
+        message: `Heads up — this motion costs about $${estMotionCost.toFixed(2)} (cap is $${COST_CAP.toFixed(2)}). Generate anyway?`,
+        confirm_label: "Generate anyway",
+        cancel_label: "Cancel",
+        onConfirm: () => {
+          void handleGenerateMotion({ approvedCost: true });
+        },
+      });
+      return;
     }
 
     if (isMotionModelFree(modelId)) {
@@ -6543,9 +6577,18 @@ function ProviderRow({
     draft.trim() && keyPrefix && !draft.trim().startsWith(keyPrefix)
       ? `Doesn't start with ${keyPrefix} — double-check before saving`
       : null;
-  const commit = () => {
+  const commit = (force?: boolean) => {
     if (!draft.trim()) return;
-    if (malformedHint && !confirm(`${malformedHint}. Save anyway?`)) return;
+    if (malformedHint && force !== true) {
+      confirmAsk({
+        title: "Key looks off",
+        message: `${malformedHint}. Save anyway?`,
+        confirm_label: "Save anyway",
+        cancel_label: "Go back",
+        onConfirm: () => commit(true),
+      });
+      return;
+    }
     onSetKey(draft);
     setDraft("");
     setEditing(false);
@@ -6605,7 +6648,7 @@ function ProviderRow({
               type="button"
               className="btn provider-act"
               disabled={!draft.trim()}
-              onClick={commit}
+              onClick={() => commit()}
             >
               Save
             </button>
@@ -6636,7 +6679,14 @@ function ProviderRow({
               type="button"
               className="btn ghost provider-act danger"
               onClick={() => {
-                if (confirm(`Remove ${name} API key from this browser?`)) onRemoveKey();
+                confirmAsk({
+                  title: `Remove ${name} key?`,
+                  message: `Removes the ${name} API key from this browser. You can add it back any time.`,
+                  confirm_label: "Remove",
+                  cancel_label: "Keep",
+                  destructive: true,
+                  onConfirm: () => onRemoveKey(),
+                });
               }}
             >
               Remove
