@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAllowedOrigin } from "@/lib/app-url";
+import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 // Server-side proxy for api.replicate.com.
 // Replicate doesn't send CORS headers, so browser calls fail with
@@ -23,6 +24,13 @@ async function relay(request: Request, pathParts: string[]) {
       { status: 403 },
     );
   }
+
+  // Rate limit AFTER the origin check (don't let junk traffic consume the
+  // budget of legit users behind the same IP) but BEFORE the upstream call.
+  // 120/min per IP is generous for real editing (status polling runs ~1/s
+  // per active job) while capping relay abuse.
+  const rl = await rateLimit(request, { name: "replicate", limit: 120 });
+  if (!rl.ok) return rateLimitResponse(rl);
 
   const key = request.headers.get("x-provider-key");
   if (!key) {

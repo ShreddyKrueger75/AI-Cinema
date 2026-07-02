@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAllowedOrigin } from "@/lib/app-url";
+import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 const RUNWAY_BASE = "https://api.dev.runwayml.com";
 const RUNWAY_VERSION = "2024-11-06";
@@ -13,6 +14,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       { status: 403 },
     );
   }
+
+  // Task polling runs ~1/s per active job; 120/min covers two concurrent
+  // jobs with headroom.
+  const rl = await rateLimit(request, { name: "runway-task", limit: 120 });
+  if (!rl.ok) return rateLimitResponse(rl);
 
   const auth = request.headers.get("authorization");
   if (!auth) {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAllowedOrigin } from "@/lib/app-url";
+import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 const RUNWAY_BASE = "https://api.dev.runwayml.com";
 const RUNWAY_VERSION = "2024-11-06";
@@ -13,6 +14,11 @@ export async function POST(request: Request) {
       { status: 403 },
     );
   }
+
+  // Job starts are rare in real editing — a human kicks off a handful of
+  // motion generations per minute at most.
+  const rl = await rateLimit(request, { name: "runway-generate", limit: 30 });
+  if (!rl.ok) return rateLimitResponse(rl);
 
   const auth = request.headers.get("authorization");
   if (!auth) {

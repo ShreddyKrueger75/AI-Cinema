@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAllowedOrigin } from "@/lib/app-url";
+import { rateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 // Server-side proxy for image.pollinations.ai used ONLY when the user
 // has a Pollinations token saved. Keeps the token out of the URL
@@ -23,6 +24,11 @@ export async function GET(
       { status: 403 },
     );
   }
+
+  // Image fetches are bursty (a section's worth of stills at once) but not
+  // sustained; 60/min per IP covers real use and caps relay abuse.
+  const rl = await rateLimit(request, { name: "pollinations", limit: 60 });
+  if (!rl.ok) return rateLimitResponse(rl);
 
   const key = request.headers.get("x-provider-key");
   if (!key) {
