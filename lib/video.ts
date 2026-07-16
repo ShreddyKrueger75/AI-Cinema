@@ -1,11 +1,17 @@
 "use client";
 
+import { resolveAssetUrl } from "./asset-store";
+
 export async function extractLastFrameDataUrl(videoUrl: string, signal?: AbortSignal): Promise<string> {
   if (signal?.aborted) throw new DOMException("aborted", "AbortError");
 
+  // Motion outputs live in IndexedDB as assetdb: URIs; resolve to a
+  // fetchable blob: URL first (pass-through for everything else).
+  const fetchableUrl = await resolveAssetUrl(videoUrl);
+
   let blobUrl: string | null = null;
   try {
-    const r = await fetch(videoUrl, { signal, credentials: "omit" });
+    const r = await fetch(fetchableUrl, { signal, credentials: "omit" });
     if (!r.ok) throw new Error(`Fetch ${r.status} ${r.statusText}`);
     const blob = await r.blob();
     blobUrl = URL.createObjectURL(blob);

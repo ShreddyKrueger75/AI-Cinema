@@ -34,7 +34,7 @@ function openDB(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
-export function isAssetUri(uri: string | null | undefined): uri is string {
+export function isAssetUri(uri: string | null | undefined): uri is `assetdb:${string}` {
   return typeof uri === "string" && uri.startsWith("assetdb:");
 }
 

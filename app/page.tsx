@@ -65,7 +65,7 @@ import { extractLastFrameDataUrl, parseLastFrameRef } from "@/lib/video";
 import { runElevenLabsMusic, runElevenLabsTTS, voiceList } from "@/lib/elevenlabs";
 import { describeRenderPlan, renderProject, terminateFFmpeg, type RenderProgress } from "@/lib/render";
 import { buildCubeLUT, gradeDescriptor, gradeToCssFilter } from "@/lib/grade";
-import { putAsset, fetchToAsset, isAssetUri } from "@/lib/asset-store";
+import { putAsset, fetchToAsset, isAssetUri, getAsset } from "@/lib/asset-store";
 import { useAssetUrl } from "@/lib/use-asset-url";
 import { startJob, abortJob, endJob } from "@/lib/abort-jobs";
 
@@ -364,6 +364,32 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     reader.onerror = () => reject(reader.error ?? new Error("FileReader error"));
     reader.readAsDataURL(blob);
   });
+}
+
+// Persist a data URL into the IndexedDB asset store; falls back to the
+// data URL itself if the store is unavailable.
+async function dataUrlToAsset(dataUrl: string): Promise<string> {
+  try {
+    const blob = await (await fetch(dataUrl)).blob();
+    return await putAsset(blob);
+  } catch {
+    return dataUrl;
+  }
+}
+
+// Resolve any locally-persisted URL to a data URL suitable for sending to
+// a provider API (Replicate and Runway both accept data URIs as image
+// inputs). http(s)/data: URLs pass through untouched.
+async function resolveToApiDataUrl(url: string): Promise<string> {
+  if (isAssetUri(url)) {
+    const blob = await getAsset(url);
+    if (!blob) throw new Error("Still is missing from local storage — re-generate it.");
+    return blobToDataUrl(blob);
+  }
+  if (url.startsWith("blob:")) {
+    return blobToDataUrl(await (await fetch(url)).blob());
+  }
+  return url;
 }
 
 // Browsers vary on which audio formats they decode. AIFF / Apple Lossless /
@@ -1601,7 +1627,7 @@ export default function HomePage() {
                 const last = (useStore.getState().project.graphics ?? []).slice(-1)[0];
                 if (last) {
                   if (isImage) {
-                    const persistedUrl = await blobToDataUrl(file);
+                    const persistedUrl = await putAsset(file);
                     updateGraphic(last.id, {
                       image_url: persistedUrl,
                       text: file.name.replace(/\.[^.]+$/, ""),
@@ -1690,8 +1716,9 @@ export default function HomePage() {
                 }
                 // Persist large blobs in IndexedDB so they survive refresh;
                 // small images can ride as data URLs in localStorage.
-                const persistedUrl = isVideo ? await putAsset(file) : await blobToDataUrl(file);
-                const poster = isVideo ? await extractVideoPosterDataUrl(file) : null;
+                const persistedUrl = await putAsset(file);
+                const posterDataUrl = isVideo ? await extractVideoPosterDataUrl(file) : null;
+                const poster = posterDataUrl ? await dataUrlToAsset(posterDataUrl) : null;
                 const videoDuration = isVideo
                   ? await measureAudioDuration(persistedUrl).catch(() => null)
                   : null;
@@ -4489,12 +4516,13 @@ function ImportedClipPanel({
       const check = canBrowserPlayVideo(file);
       if (!check.ok) { toast.error("Unsupported video format", check.reason); return; }
     }
-    const persistedUrl = isVid ? await putAsset(file) : await blobToDataUrl(file);
+    const persistedUrl = await putAsset(file);
     if (isVid) {
       if (activeVersion && activeVersion.kind === "clip") {
         updateClipVersion(section.id, activeVersion.id, { output_url: persistedUrl });
       }
-      const poster = await extractVideoPosterDataUrl(file);
+      const posterDataUrl = await extractVideoPosterDataUrl(file);
+      const poster = posterDataUrl ? await dataUrlToAsset(posterDataUrl) : null;
       if (poster && still) {
         updateStill(section.id, still.id, { output_url: poster });
       }
@@ -4713,12 +4741,12 @@ function FlowPanel({
         if (ctrl.signal.aborted) return;
         const blob = await r.blob();
         if (ctrl.signal.aborted) return;
-        // Persist as a data URL — blob: URLs die on page refresh, breaking
-        // every still on the next load. Pollinations stills are ~150KB so
-        // 6 of them fit comfortably in localStorage.
-        const dataUrl = await blobToDataUrl(blob);
+        // Persist into IndexedDB — blob: URLs die on refresh, and data URLs
+        // in project state eat the ~5MB localStorage quota on image-heavy
+        // projects.
+        const assetUrl = await putAsset(blob);
         if (!stillExists(section.id, activeStill.id)) return;
-        updateStill(section.id, activeStill.id, { output_url: dataUrl });
+        updateStill(section.id, activeStill.id, { output_url: assetUrl });
         clearJob(jobKey);
         endJob(jobKey);
         return;
@@ -4737,10 +4765,10 @@ function FlowPanel({
               signal: ctrl.signal,
             });
             if (ctrl.signal.aborted) return;
-            const fbDataUrl = await fetchAsDataUrl(fallbackUrl, ctrl.signal).catch(() => fallbackUrl);
+            const fbUrl = await fetchToAsset(fallbackUrl, ctrl.signal).catch(() => fallbackUrl);
             if (ctrl.signal.aborted) return;
             if (!stillExists(section.id, activeStill.id)) return;
-            updateStill(section.id, activeStill.id, { output_url: fbDataUrl });
+            updateStill(section.id, activeStill.id, { output_url: fbUrl });
             clearJob(jobKey);
             toast.success("Fallback succeeded", "Generated on Flux Schnell · switch the still's model to make it stick");
             return;
@@ -4786,7 +4814,7 @@ function FlowPanel({
           );
           if (refVersion && refVersion.kind === "clip" && refVersion.output_url) {
             const out = refVersion.output_url;
-            if (/^https?:\/\//.test(out)) {
+            if (/^https?:\/\//.test(out) || isAssetUri(out)) {
               referenceImageUrl = await extractLastFrameDataUrl(out);
             } else if (out.startsWith("kenburns:")) {
               const stillRef = refVersion.still_ref ?? refSection?.active_still_id ?? null;
@@ -4803,6 +4831,11 @@ function FlowPanel({
         if (referenceImageUrl && !imageModelSupportsReference(modelId)) {
           referenceImageUrl = undefined;
         }
+        if (referenceImageUrl) {
+          // Stills live in IndexedDB as assetdb: URIs — Replicate needs a
+          // data URL (or public URL) it can actually read.
+          referenceImageUrl = await resolveToApiDataUrl(referenceImageUrl);
+        }
         const url = await runReplicateImage({
           model: modelId,
           prompt: composedPrompt,
@@ -4812,12 +4845,12 @@ function FlowPanel({
           signal: ctrl.signal,
         });
         if (ctrl.signal.aborted) return;
-        // Persist as a data URL — Replicate's signed delivery URLs expire
+        // Persist into IndexedDB — Replicate's signed delivery URLs expire
         // after ~24h, so storing the URL alone breaks every still tomorrow.
-        const dataUrl = await fetchAsDataUrl(url, ctrl.signal).catch(() => url);
+        const assetUrl = await fetchToAsset(url, ctrl.signal).catch(() => url);
         if (ctrl.signal.aborted) return;
         if (!stillExists(section.id, activeStill.id)) return;
-        updateStill(section.id, activeStill.id, { output_url: dataUrl });
+        updateStill(section.id, activeStill.id, { output_url: assetUrl });
         clearJob(jobKey);
       } catch (err) {
         if (isAbortError(err)) { clearJob(jobKey); return; }
@@ -4904,7 +4937,7 @@ function FlowPanel({
         const videoUrl = await runReplicateMotion({
           model: modelId,
           prompt: composedPrompt,
-          firstFrameUrl: stillToUse.output_url,
+          firstFrameUrl: await resolveToApiDataUrl(stillToUse.output_url),
           durationSeconds: activeVersion.motion.duration_s || section.duration_s,
           aspect: project.aspect,
           apiToken: token,
@@ -4941,16 +4974,6 @@ function FlowPanel({
         );
         return;
       }
-      if (
-        stillToUse.output_url.startsWith("blob:") ||
-        stillToUse.output_url.startsWith("data:")
-      ) {
-        toast.warn(
-          "Runway needs an internet-reachable still",
-          "The current still is a browser-local blob (e.g. from Pollinations). Use a still generated by a Replicate model (Flux / SDXL) so its URL is on a public CDN, or re-host the still first.",
-        );
-        return;
-      }
       const token = providerKeys.runway!;
       const composedPrompt = composePromptWithBrief(
         activeVersion.motion.prompt,
@@ -4962,7 +4985,8 @@ function FlowPanel({
         const videoUrl = await runRunwayMotion({
           model: modelId,
           prompt: composedPrompt,
-          firstFrameUrl: stillToUse.output_url,
+          // Runway accepts data URIs for promptImage; resolve local stills.
+          firstFrameUrl: await resolveToApiDataUrl(stillToUse.output_url),
           durationSeconds: activeVersion.motion.duration_s || section.duration_s,
           aspect: project.aspect,
           apiToken: token,
