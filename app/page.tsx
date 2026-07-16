@@ -65,332 +65,64 @@ import { extractLastFrameDataUrl, parseLastFrameRef } from "@/lib/video";
 import { runElevenLabsMusic, runElevenLabsTTS, voiceList } from "@/lib/elevenlabs";
 import { describeRenderPlan, renderProject, terminateFFmpeg, type RenderProgress } from "@/lib/render";
 import { buildCubeLUT, gradeDescriptor, gradeToCssFilter } from "@/lib/grade";
-import { putAsset, fetchToAsset, isAssetUri, getAsset } from "@/lib/asset-store";
+import { putAsset, fetchToAsset, isAssetUri } from "@/lib/asset-store";
 import { useAssetUrl } from "@/lib/use-asset-url";
 import { startJob, abortJob, endJob } from "@/lib/abort-jobs";
+import {
+  formatTimecode,
+  formatTransition,
+  formatCost,
+  templateIcon,
+  useClickOutside,
+  Popover,
+  InlineText,
+  AssetImg,
+  AssetVideo,
+  AssetAudio,
+  Waveform,
+  Field,
+} from "@/components/primitives";
+import {
+  isAbortError,
+  pickFile,
+  blobToDataUrl,
+  dataUrlToAsset,
+  resolveToApiDataUrl,
+  canBrowserPlayVideo,
+  canBrowserPlayAudio,
+  extractVideoPosterDataUrl,
+  measureAudioDuration,
+} from "@/lib/media";
+import {
+  sectionVersionExists,
+  stillExists,
+  voSegmentExists,
+  musicSegmentExists,
+  projectHasGeneratedContent,
+  sectionHasImportedContent,
+} from "@/lib/store-guards";
 
 // Late-write guards: if the user deleted a section / version / segment
 // while a generation request was in flight, the result write would
 // otherwise reanimate or stomp fresh edits. Check existence before writing.
-function sectionVersionExists(sectionId: string, versionId: string): boolean {
-  const sec = useStore.getState().project.sections.find((s) => s.id === sectionId);
-  return !!sec && sec.versions.some((v) => v.id === versionId);
-}
-function stillExists(sectionId: string, stillId: string): boolean {
-  const sec = useStore.getState().project.sections.find((s) => s.id === sectionId);
-  return !!sec && sec.stills.some((st) => st.id === stillId);
-}
-function voSegmentExists(segId: string): boolean {
-  return useStore.getState().project.vo_segments.some((v) => v.id === segId);
-}
-function musicSegmentExists(segId: string): boolean {
-  return (useStore.getState().project.music_segments ?? []).some((m) => m.id === segId);
-}
-function isAbortError(err: unknown): boolean {
-  return err instanceof DOMException && err.name === "AbortError";
-}
 
 const ASPECT_OPTIONS: Aspect[] = ["9:16", "16:9", "1:1"];
 
 const SECTION_DURATION_OPTIONS_S = [1, 2, 3, 4, 5, 6, 8, 10];
 
-function formatTimecode(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-function formatTransition(type: string, duration: number): string {
-  if (type === "cut") return "Cut";
-  if (type === "fade_black") return "Fade to black";
-  return `Crossfade ${duration.toFixed(1)}s`;
-}
-
-function formatCost(c: number): string {
-  return c >= 1 ? `~ $${c.toFixed(2)}` : `~ $${c.toFixed(3)}`;
-}
-
 /* ───────────── PRIMITIVES ───────────── */
-
-function useClickOutside<T extends HTMLElement>(onClose: () => void) {
-  const ref = useRef<T | null>(null);
-  useEffect(() => {
-    function onDown(e: MouseEvent) {
-      if (!ref.current) return;
-      if (ref.current.contains(e.target as Node)) return;
-      onClose();
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-  return ref;
-}
-
-function Popover({
-  open,
-  onClose,
-  children,
-  className = "",
-  style,
-  align = "left",
-}: {
-  open: boolean;
-  onClose: () => void;
-  children: ReactNode;
-  className?: string;
-  style?: CSSProperties;
-  align?: "left" | "right" | "center";
-}) {
-  const ref = useClickOutside<HTMLDivElement>(onClose);
-  if (!open) return null;
-  return (
-    <div
-      ref={ref}
-      className={`popover align-${align} ${className}`}
-      style={style}
-      role="dialog"
-    >
-      {children}
-    </div>
-  );
-}
-
-type InlineTextProps = {
-  value: string;
-  onCommit: (next: string) => void;
-  placeholder?: string;
-  className?: string;
-  multiline?: boolean;
-  ariaLabel?: string;
-  emptyLabel?: string;
-};
-
-function InlineText({
-  value,
-  onCommit,
-  placeholder,
-  className = "",
-  multiline = false,
-  ariaLabel,
-  emptyLabel,
-}: InlineTextProps) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-
-  useEffect(() => {
-    if (!editing) setDraft(value);
-  }, [value, editing]);
-
-  const commit = () => {
-    setEditing(false);
-    if (draft !== value) onCommit(draft);
-  };
-  const cancel = () => {
-    setEditing(false);
-    setDraft(value);
-  };
-
-  if (editing) {
-    if (multiline) {
-      return (
-        <textarea
-          autoFocus
-          className={`inline-edit ${className}`}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              cancel();
-            }
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              commit();
-            }
-          }}
-          rows={3}
-          aria-label={ariaLabel}
-        />
-      );
-    }
-    return (
-      <input
-        autoFocus
-        type="text"
-        className={`inline-edit ${className}`}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            e.preventDefault();
-            cancel();
-          }
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commit();
-          }
-        }}
-        placeholder={placeholder}
-        aria-label={ariaLabel}
-      />
-    );
-  }
-
-  const isEmpty = value.trim() === "";
-  return (
-    <span
-      className={`inline-edit-display ${isEmpty ? "empty" : ""} ${className}`}
-      role="button"
-      tabIndex={0}
-      onClick={() => setEditing(true)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          setEditing(true);
-        }
-      }}
-      aria-label={ariaLabel}
-      title="Click to edit"
-    >
-      {isEmpty ? emptyLabel ?? placeholder ?? "—" : value}
-    </span>
-  );
-}
 
 // Small wrappers that resolve `assetdb:` URIs (IndexedDB-backed persisted
 // blobs) to fresh `blob:` URLs before passing to native elements. For sites
 // that need a ref (PreviewStage video, PreviewAudio music), the hook is
 // called directly inline instead.
-function AssetImg({ src, ...rest }: React.ImgHTMLAttributes<HTMLImageElement> & { src: string | null | undefined }) {
-  const resolved = useAssetUrl(src);
-  if (!resolved) return null;
-  return <img src={resolved} {...rest} />;
-}
-function AssetVideo({ src, ...rest }: React.VideoHTMLAttributes<HTMLVideoElement> & { src: string | null | undefined }) {
-  const resolved = useAssetUrl(src);
-  if (!resolved) return null;
-  return <video src={resolved} {...rest} />;
-}
-function AssetAudio({ src, ...rest }: React.AudioHTMLAttributes<HTMLAudioElement> & { src: string | null | undefined }) {
-  const resolved = useAssetUrl(src);
-  if (!resolved) return null;
-  return <audio src={resolved} {...rest} />;
-}
-
-function Waveform({
-  url,
-  samples = 120,
-  height = 32,
-  color = "var(--color-blood)",
-  className,
-}: {
-  url: string | undefined | null;
-  samples?: number;
-  height?: number;
-  color?: string;
-  className?: string;
-}) {
-  const { data, error } = useWaveform(url, samples);
-  if (!url) return null;
-  return (
-    <svg
-      className={`waveform ${className ?? ""}`}
-      viewBox={`0 0 ${samples} ${height}`}
-      preserveAspectRatio="none"
-      style={{ height, width: "100%" }}
-      aria-hidden
-    >
-      {error ? (
-        <text x="4" y={height / 2} fill="var(--color-fg-faint)" fontSize="9">{error}</text>
-      ) : data ? (
-        data.map((v, i) => {
-          const h = Math.max(1, v * (height - 2));
-          return (
-            <rect
-              key={i}
-              x={i + 0.25}
-              y={(height - h) / 2}
-              width={0.65}
-              height={h}
-              fill={color}
-              opacity={0.85}
-            />
-          );
-        })
-      ) : (
-        <g>
-          {Array.from({ length: samples }, (_, i) => (
-            <rect
-              key={i}
-              x={i + 0.25}
-              y={height / 2 - 1}
-              width={0.65}
-              height={2}
-              fill="var(--color-line-strong)"
-            />
-          ))}
-        </g>
-      )}
-    </svg>
-  );
-}
-
-function pickFile(accept: string): Promise<File | null> {
-  return new Promise((resolve) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = accept;
-    input.onchange = () => resolve(input.files?.[0] ?? null);
-    input.click();
-  });
-}
-
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") resolve(reader.result);
-      else reject(new Error("FileReader returned non-string"));
-    };
-    reader.onerror = () => reject(reader.error ?? new Error("FileReader error"));
-    reader.readAsDataURL(blob);
-  });
-}
 
 // Persist a data URL into the IndexedDB asset store; falls back to the
 // data URL itself if the store is unavailable.
-async function dataUrlToAsset(dataUrl: string): Promise<string> {
-  try {
-    const blob = await (await fetch(dataUrl)).blob();
-    return await putAsset(blob);
-  } catch {
-    return dataUrl;
-  }
-}
 
 // Resolve any locally-persisted URL to a data URL suitable for sending to
 // a provider API (Replicate and Runway both accept data URIs as image
 // inputs). http(s)/data: URLs pass through untouched.
-async function resolveToApiDataUrl(url: string): Promise<string> {
-  if (isAssetUri(url)) {
-    const blob = await getAsset(url);
-    if (!blob) throw new Error("Still is missing from local storage — re-generate it.");
-    return blobToDataUrl(blob);
-  }
-  if (url.startsWith("blob:")) {
-    return blobToDataUrl(await (await fetch(url)).blob());
-  }
-  return url;
-}
 
 // Browsers vary on which audio formats they decode. AIFF / Apple Lossless /
 // some legacy codecs work in Safari but not Chrome/Firefox. Quick check up
@@ -398,52 +130,6 @@ async function resolveToApiDataUrl(url: string): Promise<string> {
 // audio element that won't play.
 // Same idea as canBrowserPlayAudio, but for video imports. .mov from iPhones
 // usually works (H.264), but .mkv / .avi / .wmv / .flv often fail.
-function canBrowserPlayVideo(file: File): { ok: boolean; reason?: string } {
-  const v = document.createElement("video");
-  const mime = file.type || "";
-  const ext = file.name.toLowerCase().split(".").pop() ?? "";
-  if (mime && v.canPlayType(mime) !== "") return { ok: true };
-  const fallback: Record<string, string> = {
-    mp4: "video/mp4",
-    m4v: "video/mp4",
-    mov: "video/quicktime",
-    webm: "video/webm",
-    ogv: "video/ogg",
-    ogg: "video/ogg",
-    "3gp": "video/3gpp",
-    "3g2": "video/3gpp2",
-  };
-  const guess = fallback[ext];
-  if (guess && v.canPlayType(guess) !== "") return { ok: true };
-  return {
-    ok: false,
-    reason: `Your browser can't play .${ext || mime || "this format"}. Try .mp4, .webm, .mov (H.264), or .ogv.`,
-  };
-}
-
-function canBrowserPlayAudio(file: File): { ok: boolean; reason?: string } {
-  const a = document.createElement("audio");
-  const mime = file.type || "";
-  const ext = file.name.toLowerCase().split(".").pop() ?? "";
-  if (mime && a.canPlayType(mime) !== "") return { ok: true };
-  const fallback: Record<string, string> = {
-    mp3: "audio/mpeg",
-    wav: "audio/wav",
-    m4a: "audio/mp4",
-    aac: "audio/aac",
-    ogg: "audio/ogg",
-    oga: "audio/ogg",
-    opus: "audio/ogg; codecs=opus",
-    flac: "audio/flac",
-    webm: "audio/webm",
-  };
-  const guess = fallback[ext];
-  if (guess && a.canPlayType(guess) !== "") return { ok: true };
-  return {
-    ok: false,
-    reason: `Your browser can't play .${ext || mime || "this format"}. Try .mp3, .wav, .m4a, or .ogg.`,
-  };
-}
 
 // Pull the first viewable frame of a video file out as a JPEG data URL so the
 // timeline thumb has something to render. The clip-thumb only looks at the
@@ -453,96 +139,6 @@ function canBrowserPlayAudio(file: File): { ok: boolean; reason?: string } {
 // local content (blob: from URL.createObjectURL or data:). For these we open a
 // simplified panel — re-import, rename, resize, delete — instead of the full
 // still/motion generation UI, since there's nothing to generate.
-function sectionHasImportedContent(section: Section): boolean {
-  const v = section.versions.find((x) => x.id === section.active_version_id);
-  if (v && v.kind === "clip" && v.output_url && /^(blob:|data:)/.test(v.output_url)) return true;
-  const stillId = v && v.kind === "clip" ? v.still_ref ?? section.active_still_id : section.active_still_id;
-  const still = stillId ? section.stills.find((s) => s.id === stillId) : null;
-  if (still?.output_url && /^(blob:|data:)/.test(still.output_url)) return true;
-  return false;
-}
-
-function extractVideoPosterDataUrl(file: File): Promise<string | null> {
-  return new Promise((resolve) => {
-    const video = document.createElement("video");
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = "auto";
-    const url = URL.createObjectURL(file);
-    const cleanup = () => {
-      video.removeEventListener("loadeddata", onLoaded);
-      video.removeEventListener("error", onError);
-      URL.revokeObjectURL(url);
-    };
-    const onLoaded = () => {
-      try {
-        const w = video.videoWidth || 1280;
-        const h = video.videoHeight || 720;
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) { cleanup(); resolve(null); return; }
-        ctx.drawImage(video, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-        cleanup();
-        resolve(dataUrl);
-      } catch {
-        cleanup();
-        resolve(null);
-      }
-    };
-    const onError = () => { cleanup(); resolve(null); };
-    video.addEventListener("loadeddata", onLoaded);
-    video.addEventListener("error", onError);
-    video.src = url;
-    // Some browsers won't fire loadeddata until we seek
-    video.currentTime = 0.1;
-  });
-}
-
-function measureAudioDuration(src: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const a = new Audio();
-    a.preload = "metadata";
-    const cleanup = () => {
-      a.removeEventListener("loadedmetadata", onLoaded);
-      a.removeEventListener("error", onError);
-    };
-    const onLoaded = () => {
-      cleanup();
-      resolve(a.duration);
-    };
-    const onError = () => {
-      cleanup();
-      reject(new Error("Could not read audio metadata"));
-    };
-    a.addEventListener("loadedmetadata", onLoaded);
-    a.addEventListener("error", onError);
-    a.src = src;
-  });
-}
-
-function projectHasGeneratedContent(project: Project): boolean {
-  return project.sections.some(
-    (s) =>
-      s.stills.some((st) => !!st.output_url) ||
-      s.versions.some((v) => v.kind === "clip" && !!v.output_url),
-  );
-}
-
-function templateIcon(id: string): string {
-  switch (id) {
-    case "tpl_blank": return "◯";
-    case "tpl_product_reveal": return "◉";
-    case "tpl_social_story": return "▣";
-    case "tpl_youtube_preroll": return "▶";
-    case "tpl_tutorial_3shot": return "⌗";
-    case "tpl_brand_anthem": return "◈";
-    case "tpl_logo_reveal": return "◆";
-    default: return "▪";
-  }
-}
 
 /* ───────────── PAGE ───────────── */
 
@@ -4068,15 +3664,6 @@ function TitleStyleEditor({
       }}>
         {style?.font ? style.font : "Title preview"}
       </div>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="field">
-      <div className="field-label">{label}</div>
-      {children}
     </div>
   );
 }
