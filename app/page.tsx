@@ -329,6 +329,18 @@ export default function HomePage() {
     if (pendingHistoryPush.current) clearTimeout(pendingHistoryPush.current);
   }, []);
 
+  // Auto-snapshot every 3 minutes — but only for projects the user has
+  // already saved to the library (saving once opts a project in; scratch
+  // projects never appear uninvited).
+  useEffect(() => {
+    const t = setInterval(() => {
+      const p = projectRef.current;
+      const lib = useProjectLibrary.getState();
+      if (lib.projects[p.id]) lib.saveProject(p);
+    }, 180_000);
+    return () => clearInterval(t);
+  }, []);
+
   const handleUndo = useCallback(() => {
     if (pendingHistoryPush.current) {
       clearTimeout(pendingHistoryPush.current);

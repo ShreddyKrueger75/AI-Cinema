@@ -1,17 +1,33 @@
 "use client";
 
 import { putAsset, getAsset, isAssetUri } from "./asset-store";
+import { toast } from "./toast";
 
 export function isAbortError(err: unknown): boolean {
   return err instanceof DOMException && err.name === "AbortError";
 }
+
+// Every media import routes through pickFile, so one cap here covers all
+// of them. 2 GB is far above any sane clip and below what wedges the tab.
+const MAX_IMPORT_BYTES = 2 * 1024 * 1024 * 1024;
 
 export function pickFile(accept: string): Promise<File | null> {
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = accept;
-    input.onchange = () => resolve(input.files?.[0] ?? null);
+    input.onchange = () => {
+      const file = input.files?.[0] ?? null;
+      if (file && file.size > MAX_IMPORT_BYTES) {
+        toast.error(
+          "File too large",
+          `${file.name} is ${(file.size / 1024 ** 3).toFixed(1)} GB — the import cap is 2 GB.`,
+        );
+        resolve(null);
+        return;
+      }
+      resolve(file);
+    };
     input.click();
   });
 }

@@ -93,6 +93,14 @@ export function pickProjectJSONFile(): Promise<ImportResult> {
         resolve({ ok: false, error: "No file selected" });
         return;
       }
+      // Exports inline media as data URLs, so real project files can be
+      // tens of MB — but a parse attempt on anything bigger than this is
+      // a tab-killer, not a project.
+      const MAX_PROJECT_JSON_BYTES = 200 * 1024 * 1024;
+      if (file.size > MAX_PROJECT_JSON_BYTES) {
+        resolve({ ok: false, error: `Project file is ${Math.round(file.size / 1024 ** 2)} MB — the cap is 200 MB.` });
+        return;
+      }
       const text = await file.text();
       resolve(importProjectJSON(text));
     };
