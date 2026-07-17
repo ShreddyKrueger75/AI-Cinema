@@ -187,8 +187,13 @@ function reconcileTransitions(project: Project): Project {
     const existing = project.transitions.find(
       (t) => t.from_section_id === from && t.to_section_id === to,
     );
-    if (existing) {
-      wanted.push(existing);
+    // A transition belongs to the boundary INTO a section (the UI keys by
+    // to_section_id), so a reordered section keeps its customized incoming
+    // transition — only truly new boundaries get the default.
+    const carried =
+      existing ?? project.transitions.find((t) => t.to_section_id === to);
+    if (carried) {
+      wanted.push({ ...carried, from_section_id: from, to_section_id: to });
     } else {
       wanted.push({
         id: newId("tr"),
