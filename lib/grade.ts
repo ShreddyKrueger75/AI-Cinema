@@ -171,37 +171,3 @@ export function gradeDescriptor(grade: Grade): string {
   if (shadow !== "neutral") parts.push(`${shadow} shadow`);
   return parts.length ? parts.join(" · ") : "no adjustment";
 }
-
-/** ffmpeg filter chain that applies the Grade. Uses the built-in `eq`,
- *  `colorbalance`, and `curves` filters — these ship with every ffmpeg-core
- *  wasm build. `lut3d` is NOT in the minimal builds, so the LUT file we used
- *  to write was effectively a no-op (which is why renders looked ungraded). */
-export function buildFFmpegGradeFilter(grade: Grade): string {
-  const exposure = num(grade, "exposure");
-  const contrastPct = num(grade, "contrast");
-  const saturationPct = num(grade, "saturation");
-  const mids = str(grade, "mids");
-  const blacks = str(grade, "blacks");
-  const shadowTint = str(grade, "shadow_tint");
-
-  const brightness = Math.max(-1, Math.min(1, exposure * 0.5));
-  const contrast = Math.max(0, 1 + contrastPct / 100);
-  const saturation = Math.max(0, 1 + saturationPct / 100);
-  const eq = `eq=brightness=${brightness.toFixed(3)}:contrast=${contrast.toFixed(3)}:saturation=${saturation.toFixed(3)}`;
-
-  const shadow = TINT_RGB[shadowTint] ?? TINT_RGB.neutral;
-  const mid = MID_RGB[mids] ?? MID_RGB.neutral;
-  const cb =
-    `colorbalance=` +
-    `rs=${shadow[0].toFixed(3)}:gs=${shadow[1].toFixed(3)}:bs=${shadow[2].toFixed(3)}:` +
-    `rm=${mid[0].toFixed(3)}:gm=${mid[1].toFixed(3)}:bm=${mid[2].toFixed(3)}`;
-
-  let curves = "";
-  if (blacks === "crushed") {
-    curves = `,curves=all='0/0 0.18/0.10 0.5/0.5 1/1'`;
-  } else if (blacks === "lifted") {
-    curves = `,curves=all='0/0.05 0.18/0.22 0.5/0.5 1/1'`;
-  }
-
-  return `${eq},${cb}${curves}`;
-}
