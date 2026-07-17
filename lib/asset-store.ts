@@ -108,6 +108,34 @@ export function revokeCachedAssetUrl(uri: string): void {
   }
 }
 
+// Garbage collection: nothing in the app deletes assets eagerly (undo,
+// version history, and saved projects may all still point at them), so
+// orphaned blobs accumulate. sweepUnreferencedAssets deletes every stored
+// blob whose assetdb: URI is absent from the caller-provided referenced
+// set. Callers must build that set from EVERY place a URI can live
+// (current project, project library, presets, undo history, drafts).
+export async function sweepUnreferencedAssets(
+  referenced: Set<string>,
+): Promise<number> {
+  const db = await openDB();
+  const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readonly");
+    const req = tx.objectStore(STORE).getAllKeys();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error("IndexedDB keys failed"));
+  });
+  const orphans = keys.filter((k) => !referenced.has(`assetdb:${String(k)}`));
+  if (orphans.length === 0) return 0;
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    for (const k of orphans) tx.objectStore(STORE).delete(k);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("IndexedDB sweep failed"));
+  });
+  for (const k of orphans) revokeCachedAssetUrl(`assetdb:${String(k)}`);
+  return orphans.length;
+}
+
 // Fetch a remote URL and stash the bytes in IndexedDB. Use for Replicate
 // motion outputs whose signed URLs expire in ~24h — we download once at
 // generation time and persist the blob locally.

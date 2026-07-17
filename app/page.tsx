@@ -65,7 +65,7 @@ import { extractLastFrameDataUrl, parseLastFrameRef } from "@/lib/video";
 import { runElevenLabsMusic, runElevenLabsTTS, voiceList } from "@/lib/elevenlabs";
 import { describeRenderPlan, renderProject, terminateFFmpeg, type RenderProgress } from "@/lib/render";
 import { buildCubeLUT, gradeDescriptor, gradeToCssFilter } from "@/lib/grade";
-import { putAsset, fetchToAsset, isAssetUri } from "@/lib/asset-store";
+import { putAsset, fetchToAsset, isAssetUri, sweepUnreferencedAssets } from "@/lib/asset-store";
 import { useAssetUrl } from "@/lib/use-asset-url";
 import { startJob, abortJob, endJob } from "@/lib/abort-jobs";
 import {
@@ -273,6 +273,34 @@ export default function HomePage() {
     window.addEventListener("beforeunload", saveOnUnload);
     return () => window.removeEventListener("beforeunload", saveOnUnload);
   }, [project, activeSectionId]);
+
+  // Garbage-collect orphaned IndexedDB assets once per session, well after
+  // startup. The referenced set must cover every place an assetdb: URI can
+  // live — current project, saved projects, presets, undo history, and the
+  // sessionStorage draft — because a swept blob is unrecoverable.
+  useEffect(() => {
+    if (!hydrated) return;
+    const t = setTimeout(async () => {
+      try {
+        const referenced = new Set<string>();
+        const scan = (v: unknown) => {
+          const json = typeof v === "string" ? v : JSON.stringify(v);
+          if (!json) return;
+          for (const m of json.matchAll(/assetdb:[A-Za-z0-9_-]+/g)) referenced.add(m[0]);
+        };
+        scan(useStore.getState().project);
+        scan(useProjectLibrary.getState());
+        scan(useLibrary.getState());
+        scan(useHistory.getState());
+        scan(sessionStorage.getItem("cinema_draft_project") ?? "");
+        const swept = await sweepUnreferencedAssets(referenced);
+        if (swept > 0) console.info(`[assets] swept ${swept} orphaned blob(s)`);
+      } catch {
+        // GC is best-effort; never disturb the session over it.
+      }
+    }, 8000);
+    return () => clearTimeout(t);
+  }, [hydrated]);
 
   const historyPastLen = useHistory((s) => s.past.length);
   const historyFutureLen = useHistory((s) => s.future.length);
