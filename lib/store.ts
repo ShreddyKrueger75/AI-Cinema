@@ -178,7 +178,7 @@ function reindexAndRetotal(project: Project): Project {
   return { ...project, sections, duration_s, vo_segments };
 }
 
-function reconcileTransitions(project: Project): Project {
+export function reconcileTransitions(project: Project): Project {
   const ids = project.sections.map((s) => s.id);
   const wanted: Transition[] = [];
   for (let i = 0; i < ids.length - 1; i++) {
