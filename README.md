@@ -17,6 +17,7 @@ Open `http://localhost:3000`. The first paint is fully usable with **zero keys**
 ## What works today
 
 - **Timeline** — sections, transitions, audio tracks, grade strip, project header. Click anything to edit it inline.
+- **Video → Storyboard** — drop a video and edit it as a storyboard. Shot detection runs locally (`ffmpeg.wasm` dense sampling + diff-based keyframe selection, ported from [movie-digest](https://github.com/ShreddyKrueger75/movie-digest)); with an Anthropic key, **Claude watches the keyframes** and writes each shot's title, description, and regeneration prompts. Edit any card by text or thumbnail — retitle, rewrite, reorder, merge, delete, retime — then apply it to the timeline as a real project, keyframes as stills.
 - **Stage 1 + Stage 2 flow** — image prompt → still → motion prompt → clip, per the spec's two-stage clip model.
 - **Versions** — keep multiple takes per section, switch the active one from the timeline.
 - **Briefs / Grades / Music / Title styles** — four "feel" layers, each with a library of built-ins plus your own saves.
@@ -26,6 +27,7 @@ Open `http://localhost:3000`. The first paint is fully usable with **zero keys**
   - Motion via **Replicate** — MiniMax Video-01 (image-to-video).
   - Voice via **ElevenLabs** TTS.
   - Music via **ElevenLabs Music**.
+  - Vision via **Anthropic** — Claude Opus 5 watches uploaded footage for the storyboard flow.
 - **Render** — full `ffmpeg.wasm` pipeline: xfade transitions, VO + music mix, grade applied as a 3D LUT, MP4 export with `+faststart`.
 - **Persistence** — Zustand + localStorage for project, providers, and library. Export / import projects as JSON. Keys are never in the export.
 

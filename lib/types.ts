@@ -115,6 +115,70 @@ export type GraphicOverlay = {
   position?: "top" | "center" | "bottom";
 };
 
+/**
+ * Where the picture changed between two sampled frames — the centroid of the
+ * changed pixels, which in a screen recording lands on the cursor and in film
+ * footage lands on whatever moved. Ported from movie-digest's `pointer_of`.
+ */
+export type Pointer = {
+  nx: number;
+  ny: number;
+  region: string;
+  changed_fraction: number;
+};
+
+/** One detected shot: a keyframe plus where it sits in the source video. */
+export type Shot = {
+  id: string;
+  /** Seconds into the source video. */
+  start_s: number;
+  duration_s: number;
+  /** JPEG data URL of the keyframe. */
+  thumbnail: string;
+  /** Mean absolute grayscale delta from the previous kept frame. */
+  change_score: number;
+  pointer: Pointer | null;
+};
+
+export type DigestMode = "insano" | "strict" | "standard" | "lenient";
+
+export type Digest = {
+  source_name: string;
+  duration_s: number;
+  width: number;
+  height: number;
+  mode: DigestMode;
+  sampled_frames: number;
+  shots: Shot[];
+};
+
+/**
+ * One storyboard card. `description` is the human-facing text; `image_prompt`
+ * and `motion_prompt` are what a regenerate would actually send. They start
+ * out identical to what the vision pass wrote and diverge once edited.
+ */
+export type StoryboardCard = {
+  id: string;
+  title: string;
+  description: string;
+  image_prompt: string;
+  motion_prompt: string;
+  duration_s: number;
+  thumbnail: string;
+  source_start_s: number;
+  change_score: number;
+  pointer: Pointer | null;
+  /** True once a vision pass has written this card's text. */
+  described: boolean;
+};
+
+export type Storyboard = {
+  source_name: string;
+  source_duration_s: number;
+  mode: DigestMode;
+  cards: StoryboardCard[];
+};
+
 export type Project = {
   schema_version: 1;
   id: string;
