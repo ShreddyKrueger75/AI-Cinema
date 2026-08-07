@@ -15,7 +15,7 @@ export type ProviderId =
 export type Provider = {
   id: ProviderId;
   name: string;
-  surfaces: ("image" | "motion" | "voice" | "music" | "text")[];
+  surfaces: ("image" | "motion" | "voice" | "music" | "text" | "vision")[];
   signup_url: string;
   key_prefix?: string;
   docs_url?: string;
@@ -77,11 +77,10 @@ export const PROVIDERS: Provider[] = [
   {
     id: "anthropic",
     name: "Anthropic",
-    surfaces: ["text"],
+    surfaces: ["vision", "text"],
     signup_url: "https://console.anthropic.com/settings/keys",
     key_prefix: "sk-ant-",
-    notes: "v2 — prompt-to-project scaffold",
-    experimental: true,
+    notes: "Powers Video → Storyboard — Claude watches your footage and writes the shot breakdown.",
   },
 ];
 

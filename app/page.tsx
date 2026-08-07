@@ -44,6 +44,7 @@ import { TEMPLATES } from "@/lib/templates";
 import { useProjectLibrary } from "@/lib/projects";
 import { useHistory } from "@/lib/history";
 import { toast, useToasts } from "@/lib/toast";
+import { StoryboardDialog } from "./storyboard-dialog";
 import { confirmAsk, useConfirm } from "@/lib/confirm";
 import { useWaveform } from "@/lib/waveform";
 import { signOut, useSession } from "next-auth/react";
@@ -561,6 +562,7 @@ export default function HomePage() {
     };
   }, [resizingSection]);
   const [renderOpen, setRenderOpen] = useState(false);
+  const [storyboardOpen, setStoryboardOpen] = useState(false);
   const [providersOpen, setProvidersOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -814,6 +816,7 @@ export default function HomePage() {
         if (paletteOpen) { setPaletteOpen(false); return; }
         if (helpOpen) { setHelpOpen(false); return; }
         if (renderOpen) { setRenderOpen(false); return; }
+        if (storyboardOpen) { setStoryboardOpen(false); return; }
         if (providersOpen) { setProvidersOpen(false); return; }
         if (musicPanelOpen) { setMusicPanelOpen(false); return; }
         if (editingVOId) { setEditingVOId(null); return; }
@@ -884,6 +887,7 @@ export default function HomePage() {
     handleRedo,
     helpOpen,
     renderOpen,
+    storyboardOpen,
     providersOpen,
     musicPanelOpen,
     editingVOId,
@@ -1126,6 +1130,15 @@ export default function HomePage() {
           </div>
         </div>
         <div className="project-actions">
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => setStoryboardOpen(true)}
+            title="Drop a video — AI watches it and builds an editable storyboard"
+            aria-label="Open Video to Storyboard"
+          >
+            ▦ Storyboard
+          </button>
           <button type="button" className="btn ghost" onClick={handleImport} title="Import a project JSON" aria-label="Import project JSON">⇧ Import</button>
           <button type="button" className="btn ghost" onClick={handleExport} title="Export the project as JSON" aria-label="Export project JSON">⇩ Export</button>
           <button
@@ -1837,6 +1850,16 @@ export default function HomePage() {
 
       {renderOpen ? (
         <RenderDialog project={project} onClose={() => setRenderOpen(false)} />
+      ) : null}
+
+      {storyboardOpen ? (
+        <StoryboardDialog
+          project={project}
+          anthropicKey={providerKeys.anthropic?.trim() || null}
+          onApply={setProject}
+          onClose={() => setStoryboardOpen(false)}
+          onOpenKeys={() => setProvidersOpen(true)}
+        />
       ) : null}
 
       {providersOpen ? (
@@ -5466,7 +5489,7 @@ function ProviderRow({
 }: {
   providerId: ProviderId;
   name: string;
-  surfaces: ("image" | "motion" | "voice" | "music" | "text")[];
+  surfaces: ("image" | "motion" | "voice" | "music" | "text" | "vision")[];
   signupUrl: string;
   notes?: string;
   keyPrefix?: string;

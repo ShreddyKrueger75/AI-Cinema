@@ -177,7 +177,9 @@ export async function terminateFFmpeg(): Promise<void> {
   }
 }
 
-async function ensureFFmpeg(onProgress?: (p: RenderProgress) => void): Promise<{
+// Exported so the digest pass can share the singleton — loading a second
+// engine would re-download the ~30MB core.
+export async function ensureFFmpeg(onProgress?: (p: RenderProgress) => void): Promise<{
   ffmpeg: any;
   fetchFile: (file: string | Blob) => Promise<Uint8Array>;
 }> {
