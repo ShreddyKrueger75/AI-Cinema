@@ -13,3 +13,6 @@ dist/
 next-env.d.ts
 .tsbuildinfo
 *.tsbuildinfo
+
+# self-hosted ffmpeg cores are copied from node_modules at dev/build time
+/public/ffmpeg/
