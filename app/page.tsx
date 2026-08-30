@@ -39,6 +39,7 @@ import {
   useProviderKeys,
   type ProviderId,
 } from "@/lib/providers";
+import { recordModelSpend, useCosts } from "@/lib/costs";
 import { useLibrary, type LibraryItem, type LibraryKind } from "@/lib/library";
 import { TEMPLATES } from "@/lib/templates";
 import { useProjectLibrary } from "@/lib/projects";
@@ -417,6 +418,7 @@ export default function HomePage() {
       Promise.resolve(useProviderKeys.persist.rehydrate()),
       Promise.resolve(useLibrary.persist.rehydrate()),
       Promise.resolve(useProjectLibrary.persist.rehydrate()),
+      Promise.resolve(useCosts.persist.rehydrate()),
     ]).finally(() => setHydrated(true));
   }, []);
 
@@ -500,23 +502,29 @@ export default function HomePage() {
   const showWelcome =
     hydrated && !welcomeDismissed && projectStubs.length === 0 && configuredKeyCountEarly === 0;
 
-  const sessionSpent = useMemo(() => {
-    let total = 0;
-    for (const s of project.sections) {
-      if (s.type !== "clip") continue;
-      for (const st of s.stills) {
-        if (st.output_url && /^https?:\/\//.test(st.output_url)) {
-          total += imageModelCost(st.model);
-        }
-      }
-      for (const v of s.versions) {
-        if (v.kind === "clip" && v.output_url && /^https?:\/\//.test(v.output_url)) {
-          total += motionModelCost(v.motion.model, v.motion.duration_s);
-        }
-      }
-    }
-    return total;
-  }, [project.sections]);
+  // Under 900px the editor gives way to the read-only viewer. Gate it in JS
+  // (not just CSS) so its thumbnail <img>s never load on desktop.
+  const [isNarrowViewport, setIsNarrowViewport] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 899px)");
+    const update = () => setIsNarrowViewport(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  const costEvents = useCosts((s) => s.events);
+  const resetCosts = useCosts((s) => s.reset);
+  const [spendOpen, setSpendOpen] = useState(false);
+  const spentTotal = useMemo(
+    () => costEvents.reduce((sum, e) => sum + e.est_usd, 0),
+    [costEvents],
+  );
+  const spentByProvider = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const e of costEvents) totals[e.provider] = (totals[e.provider] ?? 0) + e.est_usd;
+    return Object.entries(totals).sort((a, b) => b[1] - a[1]);
+  }, [costEvents]);
   const saveProjectToLibrary = useProjectLibrary((s) => s.saveProject);
   const loadProjectFromLibrary = useProjectLibrary((s) => s.loadProject);
   const renameProjectInLibrary = useProjectLibrary((s) => s.renameProject);
@@ -645,6 +653,7 @@ export default function HomePage() {
           durationMs: Math.round(project.duration_s * 1000),
           apiKey: key,
         });
+        recordModelSpend("elevenlabs-music", project.duration_s / 60);
       }
       updateMusic({ output_url: dataUrl });
       setMusicJob(null);
@@ -680,6 +689,7 @@ export default function HomePage() {
           text: seg.text,
           apiKey: key,
         });
+        recordModelSpend("elevenlabs-tts", seg.text.length / 1000);
         // Measure the actual audio duration so the segment's window on the
         // timeline matches the generated speech — the 3s default can chop a
         // longer line, and a fully-fit window lets one VO span multiple clips.
@@ -972,20 +982,7 @@ export default function HomePage() {
 
   return (
     <>
-      <div className="mobile-gate" role="dialog" aria-label="Best on desktop">
-        <div className="mobile-gate-card">
-          <div className="mobile-gate-brand"><span className="ai">AI</span> Cinema</div>
-          <div className="mobile-gate-title">// BEST ON DESKTOP</div>
-          <p>
-            AI Cinema is a timeline-driven editor with drag-and-drop, keyboard shortcuts, and an
-            ffmpeg renderer running in your browser. It needs a wide screen.
-          </p>
-          <p>
-            Open <strong>ai-cinema-red.vercel.app</strong> on a laptop or desktop with at least a
-            900px-wide window.
-          </p>
-        </div>
-      </div>
+      {isNarrowViewport ? <MobileViewer project={project} /> : null}
 
       <div className="workspace">
       <div className="statusbar">
@@ -2054,7 +2051,43 @@ export default function HomePage() {
       <div className="footstrip">
         <span>// AI CINEMA · BUILT FOR THE LOVE OF THE GAME · MIT</span>
         <span className="footstrip-mid">
-          {project.sections.length} SECTIONS · {project.vo_segments.length} VO · {projectStubs.length} SAVED · SPENT {formatCost(sessionSpent)}
+          {project.sections.length} SECTIONS · {project.vo_segments.length} VO · {projectStubs.length} SAVED ·{" "}
+          <span className="popover-anchor">
+            <button
+              type="button"
+              className="status-link"
+              onClick={() => setSpendOpen((o) => !o)}
+              title="Estimated provider spend recorded in this browser — click for the breakdown"
+            >
+              SPENT {formatCost(spentTotal)} EST
+            </button>
+            <Popover open={spendOpen} onClose={() => setSpendOpen(false)} className="spend-popover" align="center">
+              <div className="spend-title">// EST SPEND · THIS BROWSER</div>
+              {spentByProvider.length === 0 ? (
+                <div className="spend-empty">NO PAID GENERATIONS RECORDED</div>
+              ) : (
+                spentByProvider.map(([provider, usd]) => (
+                  <div key={provider} className="spend-row">
+                    <span className="spend-provider">{provider}</span>
+                    <span className="spend-usd">{formatCost(usd)}</span>
+                  </div>
+                ))
+              )}
+              <div className="spend-foot">
+                <span className="spend-note">Estimates only — check your provider dashboards.</span>
+                <button
+                  type="button"
+                  className="spend-reset"
+                  onClick={() => {
+                    resetCosts();
+                    setSpendOpen(false);
+                  }}
+                >
+                  ⟲ RESET
+                </button>
+              </div>
+            </Popover>
+          </span>
         </span>
         <span>BLOODY FINGERS SOFTWARE — 2026</span>
       </div>
@@ -2069,6 +2102,78 @@ export default function HomePage() {
       <ToastViewport />
       <ConfirmViewport />
     </>
+  );
+}
+
+/* ───────────── MOBILE VIEWER (read-only, <900px) ───────────── */
+
+function MobileViewer({ project }: { project: Project }) {
+  const [noteDismissed, setNoteDismissed] = useState(false);
+  return (
+    <div className="mobile-viewer">
+      {!noteDismissed ? (
+        <div className="mv-note">
+          <span>
+            // BEST ON DESKTOP — editing needs a 900px-wide window. This is a read-only view.
+          </span>
+          <button
+            type="button"
+            className="mv-note-close"
+            onClick={() => setNoteDismissed(true)}
+            aria-label="Dismiss desktop note"
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
+
+      <div className="mv-brand"><span className="ai">AI</span> Cinema</div>
+      <h1 className="mv-name">
+        <span className="slash">//</span> {project.name}
+      </h1>
+      <div className="mv-specs">
+        <span>{project.duration_s.toFixed(1)}s</span>
+        <span>{project.aspect.replace(":", " : ")}</span>
+        <span>{project.sections.length} section{project.sections.length === 1 ? "" : "s"}</span>
+      </div>
+
+      <div className="lib-section-title">// SECTIONS</div>
+      <div className="mv-list">
+        {project.sections.map((s) => {
+          const activeStill = s.stills.find((st) => st.id === s.active_still_id);
+          return (
+            <div key={s.id} className="mv-row">
+              {activeStill?.output_url ? (
+                <img className="mv-thumb" src={activeStill.output_url} alt="" />
+              ) : (
+                <div className="mv-thumb empty" aria-hidden>
+                  {s.type === "title" ? "T" : "—"}
+                </div>
+              )}
+              <div className="mv-row-body">
+                <div className="mv-row-title">
+                  {s.index.toString().padStart(2, "0")} — {s.title}
+                </div>
+                <div className="mv-row-meta">
+                  {s.type.toUpperCase()} · {s.duration_s.toFixed(1)}s
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {project.sections.length === 0 ? (
+          <div className="mv-empty">NO SECTIONS YET</div>
+        ) : null}
+      </div>
+
+      <div className="lib-section-title">// AUDIO</div>
+      <div className="mv-audio">
+        <span>
+          {project.vo_segments.length} VO LINE{project.vo_segments.length === 1 ? "" : "S"}
+        </span>
+        {project.music_track ? <span>MUSIC · {project.music_track.name}</span> : null}
+      </div>
+    </div>
   );
 }
 
