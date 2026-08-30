@@ -10,6 +10,7 @@ import type {
   Storyboard,
   StoryboardCard,
   Transition,
+  VOSegment,
 } from "./types";
 import type { ShotDescription } from "./vision";
 
@@ -80,15 +81,25 @@ export function mergeIntoPrevious(storyboard: Storyboard, cardId: string): Story
   return { ...storyboard, cards };
 }
 
+export type ProjectFromStoryboardOptions = {
+  /**
+   * Carry the storyboard's transcript onto the timeline as VO segments. The
+   * segments have no output_url — the user generates TTS later, or the render
+   * skips them as silent. Defaults to off so existing callers are unchanged.
+   */
+  voFromTranscript?: boolean;
+};
+
 /**
  * Turn the storyboard into a Project the editor can open. Every card becomes
  * a clip section whose still is the source keyframe — so the timeline is
  * previewable immediately — with the card's prompts filled in for regenerating
- * either stage.
+ * either stage. With `voFromTranscript`, the transcript rides along as VO.
  */
 export function projectFromStoryboard(
   storyboard: Storyboard,
   base: Project,
+  opts: ProjectFromStoryboardOptions = {},
 ): Project {
   const sections: Section[] = storyboard.cards.map((card, i) => {
     const sectionId = newId("section");
@@ -144,6 +155,17 @@ export function projectFromStoryboard(
   const duration_s = sections.reduce((acc, s) => acc + s.duration_s, 0);
   const name = storyboard.source_name.replace(/\.[^.]+$/, "") || "Storyboard";
 
+  const vo_segments: VOSegment[] =
+    opts.voFromTranscript && storyboard.transcript && storyboard.transcript.length > 0
+      ? storyboard.transcript.map((seg) => ({
+          id: newId("vo"),
+          text: seg.text,
+          voice: "default",
+          start_s: seg.start_s,
+          duration_s: seg.duration_s,
+        }))
+      : [];
+
   return {
     ...base,
     id: newId("project"),
@@ -153,7 +175,7 @@ export function projectFromStoryboard(
     revision: 1,
     sections,
     transitions,
-    vo_segments: [],
+    vo_segments,
     graphics: [],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

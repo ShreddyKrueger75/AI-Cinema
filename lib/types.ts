@@ -172,11 +172,24 @@ export type StoryboardCard = {
   described: boolean;
 };
 
+/**
+ * One grouped run of transcribed narration, on the same source-video clock
+ * as the digest shots. Grouping happens in lib/transcribe.ts.
+ */
+export type TranscriptSegment = {
+  id: string;
+  text: string;
+  start_s: number;
+  duration_s: number;
+};
+
 export type Storyboard = {
   source_name: string;
   source_duration_s: number;
   mode: DigestMode;
   cards: StoryboardCard[];
+  /** Narration transcript, once the listen pass has run. */
+  transcript?: TranscriptSegment[];
 };
 
 export type Project = {

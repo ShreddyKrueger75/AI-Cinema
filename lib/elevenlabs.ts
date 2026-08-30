@@ -96,6 +96,75 @@ export async function runElevenLabsMusic(opts: RunMusicOpts): Promise<string> {
   return blobToDataUrl(blob);
 }
 
+export type STTWord = {
+  text: string;
+  start_s: number;
+  end_s: number;
+};
+
+export type STTResult = {
+  text: string;
+  /** Word-level timings, in seconds. Empty when the API sent none. */
+  words: STTWord[];
+};
+
+export type RunSTTOpts = {
+  audio: Blob;
+  apiKey: string;
+  signal?: AbortSignal;
+};
+
+/**
+ * ElevenLabs Scribe speech-to-text. The documented response is
+ * `{ language_code, text, words: [{ text, start, end, type }] }` with type
+ * "word" | "spacing" and start/end in seconds — but it's parsed defensively:
+ * a response carrying text without usable word timings still resolves, with
+ * `words` empty, and spacing entries are dropped.
+ */
+export async function runElevenLabsSTT(opts: RunSTTOpts): Promise<STTResult> {
+  const form = new FormData();
+  form.append("file", opts.audio, "audio.mp3");
+  form.append("model_id", "scribe_v1");
+  const r = await fetch(`${BASE}/speech-to-text`, {
+    method: "POST",
+    headers: { "xi-api-key": opts.apiKey },
+    body: form,
+    signal: opts.signal,
+  });
+  if (!r.ok) {
+    let body = "";
+    try {
+      body = await r.text();
+    } catch {
+      body = r.statusText;
+    }
+    throw new Error(`ElevenLabs STT ${r.status}: ${body.slice(0, 300)}`);
+  }
+
+  let raw: unknown;
+  try {
+    raw = await r.json();
+  } catch {
+    throw new Error("ElevenLabs STT returned a non-JSON response.");
+  }
+
+  const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const text = typeof obj.text === "string" ? obj.text : "";
+  const words: STTWord[] = [];
+  if (Array.isArray(obj.words)) {
+    for (const entry of obj.words) {
+      if (!entry || typeof entry !== "object") continue;
+      const w = entry as Record<string, unknown>;
+      if (w.type === "spacing") continue;
+      if (typeof w.text !== "string" || w.text.trim().length === 0) continue;
+      if (typeof w.start !== "number" || !Number.isFinite(w.start)) continue;
+      if (typeof w.end !== "number" || !Number.isFinite(w.end)) continue;
+      words.push({ text: w.text.trim(), start_s: w.start, end_s: w.end });
+    }
+  }
+  return { text, words };
+}
+
 export async function runElevenLabsTTS(opts: RunVoiceOpts): Promise<string> {
   const voiceId = resolveVoiceId(opts.voice);
   const r = await fetch(`${BASE}/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
