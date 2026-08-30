@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { Brief, Grade, MusicTrack, TitleStyle } from "./types";
+import { blobRefStateStorage, markHydratedForSweep } from "./blobstore";
 
 export type LibraryKind = "brief" | "grade" | "music" | "title";
 
@@ -349,7 +350,10 @@ export const useLibrary = create<LibraryState>()(
     }),
     {
       name: STORAGE_KEY,
-      storage: createJSONStorage(() => localStorage),
+      // Same localStorage key and JSON shape as before, but large data URLs
+      // (e.g. grade thumbnails) are swapped for idb: refs backed by IndexedDB
+      // on write and re-inlined on read.
+      storage: createJSONStorage(() => blobRefStateStorage),
       skipHydration: true,
       version: 2,
       // Built-in presets ship with the code; user-saved presets ship with the
@@ -368,6 +372,9 @@ export const useLibrary = create<LibraryState>()(
           } as LibraryState;
         }
         return p as LibraryState;
+      },
+      onRehydrateStorage: () => (_state, error) => {
+        if (!error) markHydratedForSweep(STORAGE_KEY);
       },
     },
   ),
