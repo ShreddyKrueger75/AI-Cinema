@@ -8,16 +8,24 @@
 import { useCallback, useRef, useState } from "react";
 import type { DigestMode, Project, Storyboard, StoryboardCard } from "@/lib/types";
 import { MODE_LABELS, digestVideo, type DigestProgress } from "@/lib/digest";
-import { describeShots, type DescribeProgress } from "@/lib/vision";
+import { DescribeError, describeShots, type DescribeProgress } from "@/lib/vision";
+import { transcribeVideo, type TranscribeProgress } from "@/lib/transcribe";
 import {
   applyDescriptions,
   mergeIntoPrevious,
   projectFromStoryboard,
   storyboardFromDigest,
 } from "@/lib/storyboard";
+import { useProviderKeys } from "@/lib/providers";
 import { toast } from "@/lib/toast";
 
-type Stage = "pick" | "digesting" | "board" | "watching";
+type Stage = "pick" | "digesting" | "board" | "watching" | "listening";
+
+function timecode(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 export function StoryboardDialog({
   project,
@@ -36,15 +44,21 @@ export function StoryboardDialog({
   const [mode, setMode] = useState<DigestMode>("standard");
   const [progress, setProgress] = useState<DigestProgress | null>(null);
   const [watchProgress, setWatchProgress] = useState<DescribeProgress | null>(null);
+  const [listenProgress, setListenProgress] = useState<TranscribeProgress | null>(null);
   const [board, setBoard] = useState<Storyboard | null>(null);
+  const [voFromTranscript, setVoFromTranscript] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const fileRef = useRef<File | null>(null);
+
+  const elevenLabsKey = useProviderKeys((s) => s.keys.elevenlabs?.trim() || null);
 
   const runDigest = useCallback(
     async (file: File) => {
       setError(null);
       setStage("digesting");
+      fileRef.current = file;
       const controller = new AbortController();
       abortRef.current = controller;
       try {
@@ -98,7 +112,14 @@ export function StoryboardDialog({
       setBoard((b) => (b ? applyDescriptions(b, descriptions) : b));
       toast.success("Claude watched the video", `${descriptions.length} shots described`);
     } catch (e) {
-      if (!(e instanceof DOMException && e.name === "AbortError")) {
+      if (e instanceof DescribeError) {
+        // Keep every shot described before the run died; only the message
+        // becomes a warning.
+        if (e.partial.length > 0) {
+          setBoard((b) => (b ? applyDescriptions(b, e.partial) : b));
+        }
+        setError(e.message);
+      } else if (!(e instanceof DOMException && e.name === "AbortError")) {
         setError(e instanceof Error ? e.message : String(e));
       }
     } finally {
@@ -106,6 +127,37 @@ export function StoryboardDialog({
       setWatchProgress(null);
     }
   }, [board, anthropicKey, project.brief, project.aspect]);
+
+  const runListen = useCallback(async () => {
+    const file = fileRef.current;
+    if (!board || !file || !elevenLabsKey) return;
+    setError(null);
+    setStage("listening");
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const segments = await transcribeVideo({
+        file,
+        apiKey: elevenLabsKey,
+        onProgress: setListenProgress,
+        signal: controller.signal,
+      });
+      setBoard((b) => (b ? { ...b, transcript: segments } : b));
+      if (segments.length > 0) {
+        setVoFromTranscript(true);
+        toast.success("Narration transcribed", `${segments.length} VO segments from ${file.name}`);
+      } else {
+        toast.info("No narration detected", "The video has no audible speech to carry as VO.");
+      }
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    } finally {
+      setStage("board");
+      setListenProgress(null);
+    }
+  }, [board, elevenLabsKey]);
 
   const updateCard = useCallback((cardId: string, patch: Partial<StoryboardCard>) => {
     setBoard((b) =>
@@ -137,11 +189,15 @@ export function StoryboardDialog({
 
   const handleApply = useCallback(() => {
     if (!board) return;
-    const next = projectFromStoryboard(board, project);
+    const withVO = voFromTranscript && (board.transcript?.length ?? 0) > 0;
+    const next = projectFromStoryboard(board, project, { voFromTranscript: withVO });
     onApply(next);
-    toast.success("Storyboard applied", `${next.sections.length} sections · ${next.duration_s.toFixed(0)}s`);
+    toast.success(
+      "Storyboard applied",
+      `${next.sections.length} sections · ${next.duration_s.toFixed(0)}s${next.vo_segments.length > 0 ? ` · ${next.vo_segments.length} VO` : ""}`,
+    );
     onClose();
-  }, [board, project, onApply, onClose]);
+  }, [board, project, voFromTranscript, onApply, onClose]);
 
   const handleFiles = useCallback(
     (files: FileList | null) => {
@@ -285,21 +341,49 @@ export function StoryboardDialog({
             </div>
           ) : null}
 
+          {stage === "listening" ? (
+            <div className="storyboard-progress">
+              <div className="storyboard-progress-msg">
+                🎙 {listenProgress?.message ?? "Listening…"}
+              </div>
+              <div className="storyboard-progress-track">
+                <div
+                  className="storyboard-progress-fill"
+                  style={{ width: `${listenProgress?.pct ?? 5}%` }}
+                />
+              </div>
+              <button type="button" className="btn ghost" onClick={cancelWork}>
+                ✕ Cancel
+              </button>
+            </div>
+          ) : null}
+
           {stage === "board" && board ? (
             <div className="storyboard-board">
               <div className="storyboard-toolbar">
                 <span className="storyboard-meta">
                   {board.source_name} · {board.cards.length} shots · {totalDuration.toFixed(1)}s
                 </span>
-                {anthropicKey ? (
-                  <button type="button" className="btn" onClick={() => void runWatch()}>
-                    👁 {board.cards.some((c) => c.described) ? "Re-watch" : "AI watch"} — describe shots
-                  </button>
-                ) : (
-                  <button type="button" className="btn" onClick={onOpenKeys}>
-                    🔑 Add Anthropic key to enable AI watch
-                  </button>
-                )}
+                <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {anthropicKey ? (
+                    <button type="button" className="btn" onClick={() => void runWatch()}>
+                      👁 {board.cards.some((c) => c.described) ? "Re-watch" : "AI watch"} — describe shots
+                    </button>
+                  ) : (
+                    <button type="button" className="btn" onClick={onOpenKeys}>
+                      🔑 Add Anthropic key to enable AI watch
+                    </button>
+                  )}
+                  {elevenLabsKey ? (
+                    <button type="button" className="btn" onClick={() => void runListen()}>
+                      🎙 {board.transcript ? "Re-listen" : "Listen"} — transcribe narration
+                    </button>
+                  ) : (
+                    <button type="button" className="btn" onClick={onOpenKeys}>
+                      🔑 Add ElevenLabs key to enable transcription
+                    </button>
+                  )}
+                </span>
               </div>
               <div className="storyboard-grid">
                 {board.cards.map((card, i) => (
@@ -417,6 +501,38 @@ export function StoryboardDialog({
                   </div>
                 ))}
               </div>
+              {board.transcript && board.transcript.length > 0 ? (
+                <div className="storyboard-card" style={{ marginTop: 14 }}>
+                  <div className="storyboard-meta">
+                    // TRANSCRIPT · {board.transcript.length} segment
+                    {board.transcript.length === 1 ? "" : "s"} · applies as VO
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                      maxHeight: 180,
+                      overflowY: "auto",
+                    }}
+                  >
+                    {board.transcript.map((seg) => (
+                      <div
+                        key={seg.id}
+                        style={{ display: "flex", gap: 10, fontSize: 11, lineHeight: 1.5 }}
+                      >
+                        <span
+                          className="storyboard-timecode"
+                          style={{ position: "static", alignSelf: "flex-start", whiteSpace: "nowrap" }}
+                        >
+                          {timecode(seg.start_s)}
+                        </span>
+                        <span style={{ color: "var(--color-fg-muted)" }}>{seg.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -427,13 +543,24 @@ export function StoryboardDialog({
               ? `Applying replaces the current timeline with ${board.cards.length} sections`
               : "Shot detection runs locally via ffmpeg.wasm"}
           </span>
-          <span style={{ display: "flex", gap: 8 }}>
+          <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {stage === "board" && board && (board.transcript?.length ?? 0) > 0 ? (
+              <label className="storyboard-mode-label" style={{ cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={voFromTranscript}
+                  onChange={(e) => setVoFromTranscript(e.target.checked)}
+                />
+                VO from transcript
+              </label>
+            ) : null}
             {stage === "board" && board ? (
               <button
                 type="button"
                 className="btn ghost"
                 onClick={() => {
                   setBoard(null);
+                  fileRef.current = null;
                   setStage("pick");
                 }}
               >

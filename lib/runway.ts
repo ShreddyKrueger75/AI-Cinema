@@ -1,4 +1,5 @@
 import type { Aspect } from "./types";
+import { recordModelSpend } from "./costs";
 
 export type RunwayMotionModel = "runway-gen4" | "runway-gen3";
 
@@ -101,6 +102,7 @@ export async function runRunwayMotion(opts: RunRunwayMotionOpts): Promise<string
     if (task.status === "SUCCEEDED") {
       const url = task.output?.[0];
       if (!url) throw new Error("Runway succeeded but returned no output URL");
+      recordModelSpend(opts.model, duration);
       return url;
     }
     if (task.status === "FAILED" || task.status === "CANCELLED") {

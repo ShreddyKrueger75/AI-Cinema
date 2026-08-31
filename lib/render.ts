@@ -178,13 +178,14 @@ export async function terminateFFmpeg(): Promise<void> {
 }
 
 // Exported so the digest pass can share the singleton — loading a second
-// engine would re-download the ~30MB core.
+// engine would re-initialize the ~30MB core. Cores are self-hosted under
+// /public/ffmpeg (see scripts/copy-ffmpeg-core.mjs) and served same-origin.
 export async function ensureFFmpeg(onProgress?: (p: RenderProgress) => void): Promise<{
   ffmpeg: any;
   fetchFile: (file: string | Blob) => Promise<Uint8Array>;
 }> {
   const { FFmpeg } = await import("@ffmpeg/ffmpeg");
-  const { fetchFile, toBlobURL } = await import("@ffmpeg/util");
+  const { fetchFile } = await import("@ffmpeg/util");
 
   if (ffmpegSingleton) {
     return { ffmpeg: ffmpegSingleton, fetchFile };
@@ -195,24 +196,54 @@ export async function ensureFFmpeg(onProgress?: (p: RenderProgress) => void): Pr
   }
 
   ffmpegLoadPromise = (async () => {
-    const ffmpeg = new FFmpeg();
-    ffmpeg.on("log", () => {});
-    const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd";
+    const loadCore = async (variant: "mt" | "st") => {
+      const ffmpeg = new FFmpeg();
+      ffmpeg.on("log", () => {});
+      const base = `/ffmpeg/${variant}`;
+      await ffmpeg.load({
+        coreURL: `${base}/ffmpeg-core.js`,
+        wasmURL: `${base}/ffmpeg-core.wasm`,
+        ...(variant === "mt" ? { workerURL: `${base}/ffmpeg-core.worker.js` } : {}),
+      });
+      return ffmpeg;
+    };
+
+    // crossOriginIsolated gates SharedArrayBuffer; the COOP + credentialless
+    // COEP headers in next.config.ts provide it in supporting browsers, but
+    // keep the runtime check so non-isolated contexts still get the
+    // single-threaded core.
+    const mt = typeof SharedArrayBuffer !== "undefined";
     onProgress?.({
       phase: "loading-engine",
       pct: 5,
-      message: "Loading ffmpeg.wasm engine (~30MB)…",
+      message: `Loading ffmpeg.wasm engine (${mt ? "multithreaded" : "single-threaded"}, self-hosted)…`,
     });
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
-    });
+
+    let ffmpeg: any;
+    if (mt) {
+      try {
+        ffmpeg = await loadCore("mt");
+      } catch {
+        // MT core failed to load (e.g. worker blocked) — fall back to the
+        // single-threaded core before giving up.
+        ffmpeg = await loadCore("st");
+      }
+    } else {
+      ffmpeg = await loadCore("st");
+    }
     ffmpegSingleton = ffmpeg;
     return ffmpeg;
   })();
 
-  const ffmpeg = await ffmpegLoadPromise;
-  return { ffmpeg, fetchFile };
+  try {
+    const ffmpeg = await ffmpegLoadPromise;
+    return { ffmpeg, fetchFile };
+  } catch (err) {
+    // Reset so a later call retries a clean load instead of re-awaiting the
+    // same rejected promise forever.
+    ffmpegLoadPromise = null;
+    throw err;
+  }
 }
 
 function nameFor(section: Section, ext: string): string {

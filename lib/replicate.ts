@@ -1,4 +1,5 @@
 import type { Aspect } from "./types";
+import { recordModelSpend } from "./costs";
 
 // Browser calls go through our server-side proxy because api.replicate.com
 // does not send CORS headers. The user's key is sent in x-provider-key
@@ -240,6 +241,7 @@ export async function runReplicateMotion(opts: RunMotionOpts): Promise<string> {
   if (pred.status !== "succeeded") {
     throw new Error(pred.error || `Generation ${pred.status}`);
   }
+  recordModelSpend(opts.model, 1);
   return extractVideoUrl(pred.output);
 }
 
@@ -296,6 +298,7 @@ export async function runReplicateMusic(opts: RunMusicReplicateOpts): Promise<st
   if (pred.status !== "succeeded") {
     throw new Error(pred.error || `Generation ${pred.status}`);
   }
+  recordModelSpend(opts.model, 1);
   return extractAudioUrl(pred.output);
 }
 
@@ -334,6 +337,7 @@ export async function runReplicateImage(opts: RunImageOpts): Promise<string> {
   if (pred.status !== "succeeded") {
     throw new Error(pred.error || `Generation ${pred.status}`);
   }
+  recordModelSpend(opts.model, 1);
   return extractImageUrl(pred.output);
 }
 

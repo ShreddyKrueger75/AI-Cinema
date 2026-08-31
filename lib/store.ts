@@ -19,6 +19,7 @@ import type {
   VOSegment,
 } from "./types";
 import { createDefaultProject } from "./defaults";
+import { blobRefStateStorage, markHydratedForSweep } from "./blobstore";
 
 export type StoreState = {
   project: Project;
@@ -681,13 +682,20 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: STORAGE_KEY,
-      storage: createJSONStorage(() => localStorage),
+      // Same localStorage key and JSON shape as before, but large data URLs
+      // (storyboard keyframes, generated stills, imported media) are swapped
+      // for idb: refs backed by IndexedDB on write and re-inlined on read —
+      // in-memory state always carries full data URLs.
+      storage: createJSONStorage(() => blobRefStateStorage),
       skipHydration: true,
       version: 3,
       migrate: (persisted, version) => {
         const next = (persisted ?? {}) as Partial<StoreState>;
         if (version < 3) next.activeSectionId = null;
         return next as StoreState;
+      },
+      onRehydrateStorage: () => (_state, error) => {
+        if (!error) markHydratedForSweep(STORAGE_KEY);
       },
     },
   ),

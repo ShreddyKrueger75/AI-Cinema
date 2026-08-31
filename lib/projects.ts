@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { Project } from "./types";
+import { blobRefStateStorage, markHydratedForSweep } from "./blobstore";
 
 export type ProjectStub = {
   id: string;
@@ -103,9 +104,12 @@ export const useProjectLibrary = create<ProjectLibraryState>()(
     }),
     {
       name: STORAGE_KEY,
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => blobRefStateStorage),
       skipHydration: true,
       version: 1,
+      onRehydrateStorage: () => (_state, error) => {
+        if (!error) markHydratedForSweep(STORAGE_KEY);
+      },
     },
   ),
 );
